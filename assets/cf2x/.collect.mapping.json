@@ -1,0 +1,17 @@
+{
+    "version": "1.0",
+    "file_records": [
+        {
+            "source_url": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Robots/Bitcraze/Crazyflie/cf2x.usd",
+            "source_hash": "19a522e25c814adbd98bbecc30d7a8ea40845650",
+            "target_url": "./cf2x.usd",
+            "target_hash": "4bc8fb1f6ceeae842cbf30872cee1a574d30cbe0"
+        },
+        {
+            "source_url": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Robots/Bitcraze/Crazyflie/configuration/cf2x_robot_schema.usd",
+            "source_hash": "6a4035ed02cb0bc693a847c91800b68337369eba",
+            "target_url": "./configuration/cf2x_robot_schema.usd",
+            "target_hash": "1541cc33d0ceaf203b4e08214e6206d3f0cf3bc2"
+        }
+    ]
+}
