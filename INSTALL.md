@@ -8,6 +8,20 @@ The order in this file = the installation order. Every command is explained: wha
 
 ---
 
+## 0. Get the project
+
+Clone (or download) this repository to a folder on Windows — for example `C:\IsaacPilot`:
+
+```powershell
+git clone https://github.com/tomtto/IsaacPilot.git
+```
+
+No git on Windows? Install it from **git-scm.com**, or download the repo as a ZIP from the GitHub page (green **Code** button → **Download ZIP**) and extract it.
+
+This folder is the `C:\path\to\IsaacPilot` referred to throughout this guide.
+
+---
+
 ## 1. WSL2 (Linux inside Windows)
 
 ### Why you need it
@@ -160,12 +174,13 @@ Inside Isaac Sim: menu **Window → Extensions** → search for `isaacsim.code_e
 
 The project's notebooks (`drone_control_ardupilot.ipynb`, `flight_missions.ipynb`) must run with exactly the Python interpreter where Isaac Sim and all the bridge libraries are installed — that is, inside `isaac_env`. Jupyter calls such an interpreter a **kernel**. For VS Code to see `isaac_env` as a separate kernel in the list, you need to **register** it.
 
-### 4.1 Install ipykernel into the environment
+### 4.1 Install ipykernel and pymavlink into the environment
 In the activated `isaac_env` (the terminal must show `(isaac_env)` at the start of the line):
 ```powershell
-pip install ipykernel
+pip install ipykernel pymavlink
 ```
-`ipykernel` is the package that can turn any Python interpreter into a Jupyter kernel (a separate process that receives code from a notebook cell and returns the result).
+- `ipykernel` — turns a Python interpreter into a Jupyter kernel (a separate process that receives code from a notebook cell and returns the result).
+- `pymavlink` — the MAVLink protocol library. `flight_missions.ipynb` uses it to send flight commands (arm / takeoff / goto / land) to the drone over UDP 14550. Required to fly the drone; the bridge itself (`drone_control_ardupilot.ipynb`) does not need it. It is a standalone package — `pip install isaacsim` does **not** bring it in.
 
 ### 4.2 Register the kernel
 ```powershell
@@ -246,7 +261,9 @@ New-NetFirewallRule -DisplayName "ArduPilot MAVLink UDP 14550" -Direction Inboun
 WSL2 lives on its own virtual network — traffic from SITL (inside Ubuntu) to Isaac Sim (on the Windows host) goes through a virtual network adapter, and Windows Defender Firewall blocks inbound UDP packets on non-standard ports by default. These two rules allow port **9002** (physics/JSON) and **14550** (MAVLink commands) — without them Isaac Sim will never receive data from SITL, even if everything else is configured correctly.
 
 ### 6.2 Quick smoke test
-1. Open Isaac Sim (`isaacsim` in the activated `isaac_env`), load a scene with a drone named `cf2x`, and enable `isaacsim.code_editor.python_server`
+1. Open Isaac Sim (`isaacsim` in the activated `isaac_env`), open/create a scene containing a drone named `cf2x`, and enable `isaacsim.code_editor.python_server`
+
+   > **Adding the drone to a scene:** the repo ships the drone model at `assets/cf2x/cf2x.usd` (the scenes themselves are not included — they are large and gitignored). On any stage — an empty one or any environment — add the drone: **File → Import** (or drag `assets/cf2x/cf2x.usd` into the Stage / Viewport). Make sure the resulting prim is named **`cf2x`** in the Stage tree (rename it if the import used a different name) — the bridge finds the drone by this name. Save the stage (**File → Save As…**) to reuse it next time.
 
    > **Using your own drone:** the bridge locates the drone by the prim name `cf2x`. To use your own drone, name its root prim `cf2x` in the scene (the path can be anything). Note: the physics is tuned for the provided Iris-class quad (1.5 kg, servo remap, Fix-12) — a different airframe needs re-tuning of mass, motor layout and servo mapping (see the sign-test tool and TROUBLESHOOTING.md).
 
