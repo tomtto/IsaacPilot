@@ -1,138 +1,134 @@
-# IsaacPilot — Troubleshooting & история разработки
+# IsaacPilot — Troubleshooting & development history
 
-Этот файл — сборник всех реальных проблем, с которыми столкнулся проект по пути от первого раскручивающегося пропеллера до полностью автономного взлёта/миссии/посадки. Если ты повторяешь этот мост на своей машине и упёрся в похожую ошибку — с высокой вероятностью она уже здесь разобрана.
+This file is a collection of all the real problems the project ran into on the way from the first spinning propeller to a fully autonomous takeoff/mission/landing. If you are reproducing this bridge on your own machine and hit a similar error, there's a good chance it is already covered here.
 
-Полная, ничем не сокращённая история отладки (все эксперименты, включая тупиковые ветки) лежит в `archive/context_ardu.md` и `archive/isaac_ardupilot_bridge_memory.md` — этот файл их конспект, отфильтрованный до того, что реально пригодится другому человеку.
+It is a filtered digest — every experiment (including dead ends) distilled down to what will actually help another person.
 
 ---
 
-## Решённые проблемы (мост ArduPilot SITL ↔ Isaac Sim)
+## Solved problems (ArduPilot SITL ↔ Isaac Sim bridge)
 
-### 1. TCP-транспорт ломал lockstep-синхронизацию
-**Симптом:** физика вела себя странно (нестабильные колебания, потеря тяги) при первых попытках подключить ArduPilot SITL через TCP.
-**Причина:** протокол ArduPilot JSON SITL — **lockstep**: ArduPilot шлёт PWM, останавливает свои внутренние часы и ждёт ОДИН JSON-ответ с физикой на каждый собственный шаг. TCP вносил задержку/буферизацию, из-за которой ответы приходили не строго по одному на шаг — внутренние часы ArduPilot расходились с реальными шагами физики Isaac Sim.
-**Решение:** переход на lockstep **UDP :9002** с колбэком прямо внутри физического цикла Isaac Sim (`subscribe_physics_step_events`) — ровно один ответ на каждый физический шаг, без буферизации и постороннего процесса-посредника.
+### 1. TCP transport broke lockstep synchronization
+**Symptom:** the physics behaved strangely (unstable oscillations, loss of thrust) on the first attempts to connect ArduPilot SITL over TCP.
+**Cause:** the ArduPilot JSON SITL protocol is **lockstep**: ArduPilot sends PWM, stops its internal clock, and waits for ONE JSON physics reply per one of its own steps. TCP introduced latency/buffering, so replies did not arrive strictly one-per-step — ArduPilot's internal clock drifted apart from Isaac Sim's actual physics steps.
+**Fix:** switch to lockstep **UDP :9002** with a callback right inside Isaac Sim's physics loop (`subscribe_physics_step_events`) — exactly one reply per physics step, with no buffering and no intermediary process.
 
-### 2. Неверный magic number в servo-пакете → PWM всегда 1000
-**Симптом:** ArduPilot принимает соединение, но во всех входящих пакетах PWM = 1000 (минимум), моторы никогда не раскручиваются.
-**Причина:** в коде стоял magic number `0x4553` (использовался в более ранней версии моста), а реальный протокол ArduPilot SITL JSON (`SIM_JSON.h`) ожидает `18458` (`0x47FA`).
-**Решение:** `_SERVO_MAGIC = 18458` в парсере пакетов (`isaac_bridge.py`), проверка на оба возможных формата пакета (40 и 36 байт) по этому magic number.
+### 2. Wrong magic number in the servo packet → PWM always 1000
+**Symptom:** ArduPilot accepts the connection, but in every incoming packet PWM = 1000 (the minimum); the motors never spin up.
+**Cause:** the code used the magic number `0x4553` (from an earlier version of the bridge), while the actual ArduPilot SITL JSON protocol (`SIM_JSON.h`) expects `18458` (`0x47FA`).
+**Fix:** `_SERVO_MAGIC = 18458` in the packet parser (`isaac_bridge.py`), checking both possible packet formats (40 and 36 bytes) against this magic number.
 
-### 3. PWM = 1000 даже после успешного ARM
-**Симптом:** ARM проходит, режим GUIDED устанавливается, но сервоканалы всё равно не двигаются.
-**Причина:** в режиме SITL JSON ArduPilot берёт RC-каналы **из самого JSON-ответа моста** (поле `"rc"`), а не из MAVLink `RC_CHANNELS_OVERRIDE`. Присылали `"rcin": [1500, ...]` (массив) — ArduPilot этот формат **молча игнорирует**.
-**Решение:** правильный формат — объект с именованными полями:
+### 3. PWM = 1000 even after a successful ARM
+**Symptom:** ARM succeeds, GUIDED mode is set, but the servo channels still don't move.
+**Cause:** in SITL JSON mode ArduPilot takes the RC channels **from the bridge's own JSON reply** (the `"rc"` field), not from the MAVLink `RC_CHANNELS_OVERRIDE`. We were sending `"rcin": [1500, ...]` (an array) — ArduPilot **silently ignores** this format.
+**Fix:** the correct format is an object with named fields:
 ```python
 "rc": {"rc_1": 1500, "rc_2": 1500, "rc_3": 1500, ..., "rc_8": 1500}
 ```
-Стоило нескольких часов отладки — ошибка ничем не сигнализируется, просто ничего не происходит.
+This cost several hours of debugging — the error gives no signal at all, nothing simply happens.
 
-### 4. SERVO_OUTPUT_RAW не приходит (нельзя продиагностировать PWM)
-**Симптом:** запрошен стрим `SERVO_OUTPUT_RAW` (msg_id 36), но сообщения не приходят вообще.
-**Причина:** использовался устаревший `request_data_stream_send` — ArduPilot 4.x его молча игнорирует.
-**Решение:** `MAV_CMD_SET_MESSAGE_INTERVAL` (команда 511):
+### 4. SERVO_OUTPUT_RAW never arrives (can't diagnose PWM)
+**Symptom:** the `SERVO_OUTPUT_RAW` stream (msg_id 36) is requested, but the messages don't arrive at all.
+**Cause:** the deprecated `request_data_stream_send` was used — ArduPilot 4.x silently ignores it.
+**Fix:** `MAV_CMD_SET_MESSAGE_INTERVAL` (command 511):
 ```python
 conn.mav.command_long_send(sysid, 1, mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0,
-    36, 200000, 0, 0, 0, 0, 0)  # msg_id=36 (SERVO_OUTPUT_RAW), интервал 200мс
+    36, 200000, 0, 0, 0, 0, 0)  # msg_id=36 (SERVO_OUTPUT_RAW), interval 200ms
 ```
 
-### 5. Моторы застревают на PWM≈1100 (GROUND_IDLE), тяги нет
-**Симптом:** после ARM PWM чуть выше минимума (~1100), но не растёт даже при командах позиции.
-**Причина:** `ap.land_complete=True` внутри ArduPilot принудительно сбрасывает состояние мотора в `GROUND_IDLE` — обычный `SET_POSITION_TARGET` не может это перебить, потому что тоже блокируется тем же самым landing detector.
-**Решение:** команда **NAV_TAKEOFF** — она явно вызывает `auto_takeoff_run()`, который сбрасывает `land_complete=False` и переводит моторы в `THROTTLE_UNLIMITED`. Требует `ap.auto_armed=True`, для чего нужен `rc3=1500` в JSON-поле `"rc"`.
+### 5. Motors stuck at PWM≈1100 (GROUND_IDLE), no thrust
+**Symptom:** after ARM the PWM is just above the minimum (~1100) but doesn't rise, even on position commands.
+**Cause:** `ap.land_complete=True` inside ArduPilot forces the motor state to `GROUND_IDLE` — a plain `SET_POSITION_TARGET` can't override it, because it too is blocked by the same landing detector.
+**Fix:** the **NAV_TAKEOFF** command — it explicitly invokes `auto_takeoff_run()`, which clears `land_complete=False` and moves the motors to `THROTTLE_UNLIMITED`. It requires `ap.auto_armed=True`, which needs `rc3=1500` in the JSON `"rc"` field.
 
-### 6. FORCE ARM отклоняется: "Accels inconsistent"
-**Симптом:** и обычный, и FORCE ARM отклоняются с этим сообщением, несмотря на `ARMING_CHECK=0`.
-**Причина:** ArduPilot по умолчанию эмулирует **несколько IMU**. Мост присылает данные только для одного набора IMU — второй остаётся без обновлений/с шумом, и `ins.healthy()` возвращает false. Это **mandatory-проверка** внутри `arm()`, `ARMING_CHECK=0` её не обходит.
-**Решение:** в `sitl_defaults.parm` — `INS_USE2 0`, `INS_USE3 0` (отключить второй/третий IMU).
+### 6. FORCE ARM rejected: "Accels inconsistent"
+**Symptom:** both a normal ARM and a FORCE ARM are rejected with this message, despite `ARMING_CHECK=0`.
+**Cause:** ArduPilot emulates **multiple IMUs** by default. The bridge sends data for only one IMU set — the second one is left without updates / with noise, and `ins.healthy()` returns false. This is a **mandatory check** inside `arm()` that `ARMING_CHECK=0` does not bypass.
+**Fix:** in `sitl_defaults.parm` — `INS_USE2 0`, `INS_USE3 0` (disable the second/third IMU).
 
-### 7. SITL зацикливается на "Loaded defaults from sitl_defaults.parm"
-**Симптом:** при старте SITL в терминале повторяется одна и та же строка загрузки defaults десятки раз.
-**Причина:** в файле параметров оказался невалидный для этой версии ArduPilot параметр (`EK3_CHECK_SCALE`) — валидатор параметров не может его применить и перезапускает цикл проверки.
-**Решение:** удалить несуществующие/невалидные параметры из `sitl_defaults.parm`, оставить только реально поддерживаемые.
+### 7. SITL loops on "Loaded defaults from sitl_defaults.parm"
+**Symptom:** at SITL startup the same defaults-loading line repeats dozens of times in the terminal.
+**Cause:** the parameter file contained a parameter invalid for this ArduPilot version (`EK3_CHECK_SCALE`) — the parameter validator can't apply it and restarts the validation loop.
+**Fix:** remove non-existent/invalid parameters from `sitl_defaults.parm`, keeping only the ones actually supported.
 
-### 8. "Disarming motors" сразу после успешного ARM
-**Симптом:** ARM подтверждён, но через секунду-две автопилот сам себя разоружает.
-**Причина:** RC failsafe срабатывает при отсутствии постоянного RC-сигнала (в SITL без реального пульта его и не будет).
-**Решение:** в defaults — `FS_THR_ENABLE 0`, `FS_GCS_ENABLE 0`, `DISARM_DELAY 0`.
+### 8. "Disarming motors" right after a successful ARM
+**Symptom:** ARM is confirmed, but a second or two later the autopilot disarms itself.
+**Cause:** RC failsafe triggers when there is no continuous RC signal (in SITL, with no real transmitter, there won't be one).
+**Fix:** in the defaults — `FS_THR_ENABLE 0`, `FS_GCS_ENABLE 0`, `DISARM_DELAY 0`.
 
-### 9. ARM отклоняется: "waiting for home" / "Need Position Estimate"
-**Симптом:** ARM падает с этими сообщениями, хотя телеметрия вроде бы идёт.
-**Причина:** EKF выставляет origin (точку отсчёта позиции) не мгновенно после старта SITL, а спустя ~10-20 секунд. Если пытаться ARM раньше — EKF ещё не готов.
-**Решение:** явно ждать перед ARM появления сообщений `EKF3 IMU0 origin set` и `EKF3 IMU0 is using GPS` (или соответствующих полей `LOCAL_POSITION_NED`) — функция `wait_ekf()` в проекте.
+### 9. ARM rejected: "waiting for home" / "Need Position Estimate"
+**Symptom:** ARM fails with these messages even though telemetry seems to be flowing.
+**Cause:** the EKF doesn't set its origin (the position reference point) immediately after SITL startup, but only ~10-20 seconds later. If you try to ARM sooner, the EKF isn't ready yet.
+**Fix:** explicitly wait, before ARM, for the messages `EKF3 IMU0 origin set` and `EKF3 IMU0 is using GPS` (or the corresponding `LOCAL_POSITION_NED` fields) — the `wait_ekf()` function in the project.
 
-### 10. `INS_ENABLE_MASK` ломает калибровку акселерометра
-**Симптом:** после установки этого параметра (в попытке ограничить набор активных IMU) появляется блокирующая ошибка "3D Accel calibration needed", не обходимая даже FORCE ARM.
-**Решение:** не использовать `INS_ENABLE_MASK` для этой цели — правильный путь — `INS_USE2`/`INS_USE3` (см. проблему 6).
+### 10. `INS_ENABLE_MASK` breaks accelerometer calibration
+**Symptom:** after setting this parameter (in an attempt to limit the set of active IMUs) a blocking "3D Accel calibration needed" error appears, not bypassable even with FORCE ARM.
+**Fix:** don't use `INS_ENABLE_MASK` for this purpose — the correct path is `INS_USE2`/`INS_USE3` (see problem 6).
 
-### 11. `MAV_CMD_PREFLIGHT_CALIBRATION` уводит ArduPilot в интерактивную калибровку
-**Симптом:** после отправки этой команды (в попытке исправить проблемы калибровки) ArduPilot переходит в состояние, ожидающее ручной калибровки, и перестаёт отвечать как обычно.
-**Решение:** не вызывать эту команду в автоматизированном флоу вообще.
+### 11. `MAV_CMD_PREFLIGHT_CALIBRATION` drives ArduPilot into interactive calibration
+**Symptom:** after sending this command (in an attempt to fix calibration issues) ArduPilot enters a state that waits for manual calibration and stops responding normally.
+**Fix:** don't call this command in an automated flow at all.
 
-### 12. Система координат: волчок и растущая EKF-дисперсия
-**Симптом:** дрон закручивается по рысканью (yaw) и постепенно уносится на десятки метров; EKF показывает растущую variance.
-**Причина:** изначально предполагалось, что мир Isaac Sim использует стандартную ENU/NED-подобную ориентацию с **Y=East**. Тестом знаков (искусственно задать известное отклонение и посмотреть, куда реально уходит дрон) выяснилось: в используемой сцене **Y=West**, не East.
-**Решение:** «Фикс-12» — полная конверсия FLU→FRD с явной сменой знака Y-компоненты у ВСЕХ величин (гироскоп, акселерометр, позиция, скорость, кватернион), плюс `SERVO_REMAP=[0,3,1,2]` и `ROT_DIR=[-1,+1,-1,+1]` для сопоставления моторов. Подробности — в `README.md`, раздел «FLU→FRD Conversion».
+### 12. Coordinate system: spinning top and growing EKF variance
+**Symptom:** the drone spins up in yaw and gradually drifts away by tens of meters; the EKF shows growing variance.
+**Cause:** it was initially assumed that the Isaac Sim world uses a standard ENU/NED-like orientation with **Y=East**. A sign test (deliberately apply a known deviation and see where the drone actually goes) revealed that in the scene used, **Y=West**, not East.
+**Fix:** "Fix-12" — a full FLU→FRD conversion with an explicit sign flip of the Y component for ALL quantities (gyro, accelerometer, position, velocity, quaternion), plus `SERVO_REMAP=[0,3,1,2]` and `ROT_DIR=[-1,+1,-1,+1]` for motor mapping. Details in `README.md`, the "FLU→FRD Conversion" section.
 
-### 13. EKF "слеп" — высота всегда показывает 0
-**Симптом:** телеметрия идёт, EKF инициализируется, но расчётная высота не двигается вообще.
-**Причина:** в JSON-ответ моста отправлялось "сырое" ускорение из физического движка, а не то, что реально измеряет акселерометр (удельная сила = реальное ускорение минус гравитация). EKF математически не может отличить свободное падение от покоя, если получает неверные данные accel.
-**Решение:** правильно считать `accel_body` как истинное измерение акселерометра (вычитать гравитацию из ускорения физического тела), а не брать сырое ускорение центра масс.
+### 13. EKF is "blind" — altitude always reads 0
+**Symptom:** telemetry flows, the EKF initializes, but the computed altitude doesn't move at all.
+**Cause:** the bridge's JSON reply sent "raw" acceleration from the physics engine, rather than what an accelerometer actually measures (specific force = real acceleration minus gravity). Mathematically, the EKF can't tell free fall from rest if it receives incorrect accel data.
+**Fix:** compute `accel_body` correctly as the true accelerometer measurement (subtract gravity from the physical body's acceleration), rather than taking the raw center-of-mass acceleration.
 
-### 14. Контур управления на 50Гц — слишком медленно для стабильности
-**Симптом:** дрон нестабилен даже при в целом корректных настройках.
-**Причина:** физика Isaac Sim считалась на низкой частоте, недостаточной для устойчивой стабилизации мультикоптера с такой динамикой.
-**Решение:** физика поднята до **240Hz** (`PhysxSceneAPI.TimeStepsPerSecond`).
+### 14. A 50 Hz control loop — too slow for stability
+**Symptom:** the drone is unstable even with generally correct settings.
+**Cause:** Isaac Sim physics was computed at a low rate, insufficient for stable stabilization of a multicopter with this dynamics.
+**Fix:** physics raised to **240 Hz** (`PhysxSceneAPI.TimeStepsPerSecond`).
 
-### 15. PID-гейны, подобранные под 28-граммовый Crazyflie, разносят более тяжёлый дрон
-**Симптом:** раскачка/перегейн при использовании параметров, изначально настроенных под лёгкий дрон.
-**Причина:** коэффициенты регулятора ArduPilot и параметры массы/инерции физического тела не соответствовали друг другу — с лёгким телом те же гейны становятся чрезмерно агрессивными.
-**Решение:** «Iris-репспек» — масса и инерция физического тела в Isaac Sim приведены к параметрам реального дрона класса Iris (масса 1.5кг, инерция `(0.029125, 0.029125, 0.055225)` кг·м²), под который штатно откалиброваны параметры ArduPilot по умолчанию.
+### 15. PID gains tuned for a 28-gram Crazyflie tear a heavier drone apart
+**Symptom:** oscillation/over-gain when using parameters originally tuned for a light drone.
+**Cause:** ArduPilot's controller gains and the physical body's mass/inertia didn't match each other — with a light body, the same gains become overly aggressive.
+**Fix:** the "Iris respec" — the physical body's mass and inertia in Isaac Sim are brought to those of a real Iris-class drone (mass 1.5 kg, inertia `(0.029125, 0.029125, 0.055225)` kg·m²), which ArduPilot's default parameters are calibrated for out of the box.
 
-### 16. Кавычки не переживают переход Windows → wsl.exe → bash
-**Симптом:** инлайн-команда вида `wsl bash -c "... $(cat /etc/resolv.conf | awk '{print $2}') ..."`, запущенная из Windows (PowerShell/Python `subprocess`), давала **пустой** `$WIN_IP` — SITL слал пакеты в никуда.
-**Причина:** экранирование кавычек и подстановок не переживает двойной переход между шеллами (Windows → `wsl.exe` → bash внутри) — часть спецсимволов интерпретируется не тем слоем.
-**Решение:** формировать полноценный `.sh`-скрипт на диске (обязательно с `newline='\n'`, не Windows `\r\n`!) и запускать его как файл (`wsl.exe bash /mnt/c/.../run_sitl.sh`), а не как инлайн-строку — экранирование внутри одного файла одной системы работает предсказуемо.
+### 16. Quotes don't survive the Windows → wsl.exe → bash transition
+**Symptom:** an inline command like `wsl bash -c "... $(cat /etc/resolv.conf | awk '{print $2}') ..."` run from Windows (PowerShell / Python `subprocess`) produced an **empty** `$WIN_IP` — SITL sent packets into the void.
+**Cause:** escaping of quotes and substitutions doesn't survive the double transition between shells (Windows → `wsl.exe` → bash inside) — some special characters are interpreted by the wrong layer.
+**Fix:** build a full `.sh` script on disk (necessarily with `newline='\n'`, not Windows `\r\n`!) and run it as a file (`wsl.exe bash /mnt/c/.../run_sitl.sh`) rather than as an inline string — escaping within a single file of a single system behaves predictably.
 
-### 17. Подключение к TCP 5760 полностью останавливает JSON-цикл
-**Симптом:** стоило подключиться любым TCP-клиентом (например, `telnet`/MAVProxy) к порту 5760, как частота обмена лоскстеп-пакетами падала с тысяч Гц до ~1 Гц.
-**Решение:** не подключаться к 5760 вообще — весь обмен физикой и телеметрией идёт по UDP (`:9002` физика, `:14550` MAVLink), этот TCP-порт для проекта не нужен.
+### 17. Connecting to TCP 5760 completely stalls the JSON loop
+**Symptom:** as soon as any TCP client (e.g. `telnet`/MAVProxy) connected to port 5760, the lockstep packet rate dropped from thousands of Hz to ~1 Hz.
+**Fix:** don't connect to 5760 at all — all physics and telemetry exchange goes over UDP (`:9002` physics, `:14550` MAVLink); this TCP port is not needed for the project.
 
-### 18. ARM проходит не с первой попытки (обычно 2-3 цикл)
-**Симптом:** первая попытка ARM отклоняется проверками вида «Gyro 0 rate 240Hz < loop rate*1.8» или «Main loop slow».
-**Причина:** физика Isaac Sim идёт на 240Hz, а `SCHED_LOOP_RATE` ArduPilot выставлен в 200 — на границе между двумя внутренними проверками планировщика, из-за чего первые несколько циклов ARM формально не проходят валидацию, хотя система работает штатно.
-**Решение (используется):** просто повторять ARM 2-3 раза — это нормальное поведение при текущей конфигурации, не баг. **Возможная более чистая доработка (не проверена):** снизить `SCHED_LOOP_RATE` до ~130, тогда `130×1.8=234<240` удовлетворяет обеим проверкам и ARM проходит с первого раза.
+### 18. ARM doesn't pass on the first try (usually cycle 2-3)
+**Symptom:** the first ARM attempt is rejected by checks like "Gyro 0 rate 240Hz < loop rate*1.8" or "Main loop slow".
+**Cause:** Isaac Sim physics runs at 240 Hz, while ArduPilot's `SCHED_LOOP_RATE` is set to 200 — right on the boundary between two internal scheduler checks, so the first few ARM cycles formally fail validation even though the system is working fine.
+**Fix (in use):** simply retry ARM 2-3 times — this is normal behavior with the current configuration, not a bug. **A possible cleaner improvement (unverified):** lower `SCHED_LOOP_RATE` to ~130, so that `130×1.8=234<240` satisfies both checks and ARM passes on the first try.
 
-### 19. Notebook зависает при перезапуске kernel миссий
-**Симптом:** после `Restart Kernel` в notebook'е с полётными командами — новая сессия виснет на подключении.
-**Причина:** старое ядро ещё держит открытым UDP-сокет `14550` в ожидании heartbeat; порт занят.
-**Решение:** дождаться полной остановки старого kernel перед запуском нового (или явно перезапускать оба notebook'а вместе при сомнении).
+### 19. The notebook hangs when restarting the missions kernel
+**Symptom:** after `Restart Kernel` in the notebook with the flight commands, the new session hangs on connecting.
+**Cause:** the old kernel still holds the UDP socket `14550` open, waiting for a heartbeat; the port is busy.
+**Fix:** wait for the old kernel to fully stop before starting a new one (or explicitly restart both notebooks together when in doubt).
 
-### 20. `goto()` срезает углы маршрута
-**Симптом:** при полёте по прямоугольному/квадратному маршруту повороты срезаются примерно на полметра, а не проходят точно через заданную точку.
-**Причина:** точка считается достигнутой при входе в радиус `tolerance` (по умолчанию `0.7`) — это ожидаемое поведение «долёта по кругу», а не баг позиционирования.
-**Решение:** для точных углов передавать меньший `tolerance` (например, `0.3`) в вызов `goto()`.
+### 20. `goto()` cuts the corners of the route
+**Symptom:** when flying a rectangular/square route, the turns are cut by about half a meter rather than passing exactly through the target point.
+**Cause:** a point is considered reached when entering the `tolerance` radius (default `0.7`) — this is the expected "fly-by along an arc" behavior, not a positioning bug.
+**Fix:** for precise corners, pass a smaller `tolerance` (e.g. `0.3`) to the `goto()` call.
 
-### 21. Мост не находит дрона на новой сцене
-**Симптом:** на новой USD-сцене (другая раскладка склада) скрипт падает с «не вижу дрон» несмотря на то, что дрон визуально есть в сцене.
-**Причина:** путь к дрону был захардкожен (`/World/cf2x`) — в новой сцене корень дрона называется иначе (`/Root/cf2x`), плюс дрон стоит не в мировом нуле.
-**Решение:** искать прим **по имени** `cf2x` через `stage.Traverse()` (не по фиксированному пути), а не по абсолютному пути; аналогично суставы/пропеллеры искать по шаблону имени (`m*_joint`, `m*_prop`, `body`) относительно найденного корня. Ненулевой спавн не проблема — ArduPilot берёт home от точки первого включения, а не от мирового нуля.
-
----
-
-## Историческая справка: заброшенный подход (Шаг 1 плана)
-
-До перехода на ArduPilot SITL проект прошёл через **60+ итераций** попыток написать собственный геометрический контроллер стабилизации (по мотивам Pegasus Simulator/Lee-Mellinger) прямо на `omni.physx` API Isaac Sim — с целью просто подтвердить, что связка `apply_force_at_pos`/`read_state()` вообще надёжно работает, прежде чем доверять ей внешний автопилот.
-
-Контроллер так и не был доведён до стабильного зависания — истинная причина неустойчивости (после исключения гейнов, гироскопики, коллизий, физики приложения силы, систем координат демпфирования и десятка других гипотез) осталась не до конца подтверждённой на момент перехода к Шагу 2. Проект сознательно **отказался от собственной математики стабилизации** в пользу проверенного автопилота ArduPilot — тот же самый код полетит на реальном железе (Matek H743), в отличие от одноразового симуляционного контроллера.
-
-Если интересна полная хронология этого расследования (она содержит по-настоящему въедливую отладку физики PhysX, USD Scale/inertia и геометрии моторов) — она целиком сохранена в `archive/context.md`. Для практического использования и повторения проекта она не нужна: весь стек стабилизации сейчас берёт на себя ArduPilot SITL.
+### 21. The bridge can't find the drone in a new scene
+**Symptom:** on a new USD scene (a different warehouse layout) the script fails with "can't see the drone" even though the drone is visually present in the scene.
+**Cause:** the drone path was hardcoded (`/World/cf2x`) — in the new scene the drone's root is named differently (`/Root/cf2x`), and the drone is not at the world origin.
+**Fix:** find the prim **by name** `cf2x` via `stage.Traverse()` (not by a fixed path); likewise find the joints/propellers by a name pattern (`m*_joint`, `m*_prop`, `body`) relative to the found root. A non-zero spawn is not a problem — ArduPilot takes home from the point of first arming, not from the world origin.
 
 ---
 
-## Где искать ещё, если проблема не описана здесь
+## Historical note: the abandoned approach (Step 1 of the plan)
 
-- `archive/context_ardu.md` — построчная хронология отладки протокола ArduPilot JSON SITL (полная версия проблем 1-21 выше, с точными логами и датами)
-- `archive/isaac_ardupilot_bridge_memory.md` — снимок рабочей конфигурации и итоговых фиксов на момент завершения проекта
-- `README.md` — таблица параметров `sitl_defaults.parm` и краткая таблица «Хронология проблем и фиксов»
-- `INSTALL.md` — если проблема на этапе установки окружения (WSL2, Isaac Sim, Jupyter kernel), а не самого моста
+Before switching to ArduPilot SITL, the project went through **60+ iterations** of trying to write its own geometric stabilization controller (inspired by Pegasus Simulator / Lee-Mellinger) directly on Isaac Sim's `omni.physx` API — with the goal of simply confirming that the `apply_force_at_pos` / `read_state()` combination works reliably at all, before trusting an external autopilot with it.
+
+The controller was never brought to a stable hover — the true cause of the instability (after ruling out gains, gyroscopics, collisions, force-application physics, damping coordinate systems and a dozen other hypotheses) remained not fully confirmed at the point of moving to Step 2. The project deliberately **gave up on its own stabilization math** in favor of the proven ArduPilot autopilot — the very same code will fly on real hardware (Matek H743), unlike a one-off simulation controller.
+
+---
+
+## Where else to look if your problem isn't described here
+
+- `README.md` — the `sitl_defaults.parm` parameter table and a brief "Problem and fix timeline" table
+- `INSTALL.md` — if the problem is at the environment-setup stage (WSL2, Isaac Sim, Jupyter kernel) rather than the bridge itself

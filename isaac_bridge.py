@@ -1,30 +1,40 @@
 """
-isaac_bridge.py — весь запуск моста ArduPilot <-> Isaac Sim одной функцией.
+isaac_bridge.py — the whole ArduPilot <-> Isaac Sim bridge startup in a single function.
 
-Использование в notebook (kernel isaac_env):
-    import sys; sys.path.append(r"C:\\VSCODE\\ISAAC")
+Usage in a notebook (kernel isaac_env):
+    import sys; sys.path.append(r"C:\\VSCODE\\ISAACPILOT")
     from isaac_bridge import *
-    await bridge_up()      # поднять всё в Isaac (мост, физика 240Hz, Iris, колбэк Фикс-12)
-    launch_sitl()          # запустить ArduPilot SITL в отдельном окне (WSL)
-    await diag()           # диагностика + полётный лог
-    await reset_motors()   # после Stop->Play
-    stop_sitl()            # убить SITL (перед рестартом)
+    await bridge_up()      # bring everything up in Isaac (bridge, 240Hz physics, Iris, Fix-12 callback)
+    launch_sitl()          # launch ArduPilot SITL in a separate window (WSL)
+    await diag()           # diagnostics + flight log
+    await reset_motors()   # after Stop->Play
+    stop_sitl()            # kill SITL (before restart)
 
-Рабочая конфигурация 2026-07-08 (первый успешный NAV_TAKEOFF 5м + зависание):
-lockstep UDP :9002, физика 240Hz, конверсии FLU->FRD (мир Isaac: X=North, Y=West, Z=Up),
-SERVO_REMAP [0,3,1,2], ROT_DIR [-1,+1,-1,+1], accel Пегаса, Iris-репспек 1.5кг.
+Working configuration 2026-07-08 (first successful NAV_TAKEOFF 5m + hover):
+lockstep UDP :9002, 240Hz physics, FLU->FRD conversions (Isaac world: X=North, Y=West, Z=Up),
+SERVO_REMAP [0,3,1,2], ROT_DIR [-1,+1,-1,+1], Pegasus accel, Iris respec 1.5kg.
 """
 
 import asyncio
 import json as _json
+import os
 import subprocess
+
+# Paths derive from THIS module's own location, so the project runs from ANY
+# folder (clone anywhere -> run) without editing hardcoded paths.
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+def _to_wsl(win_path):
+    """C:\\a\\b -> /mnt/c/a/b (a Windows path as seen inside WSL)."""
+    p = os.path.abspath(win_path)
+    return "/mnt/" + p[0].lower() + p[2:].replace("\\", "/")
 
 ISAAC_HOST = "127.0.0.1"
 ISAAC_PORT = 8226  # extension isaacsim.code_editor.python_server
 
 
 async def execute_in_isaac(source: str, host: str = ISAAC_HOST, port: int = ISAAC_PORT) -> dict:
-    """Отправить код в открытый Isaac Sim и получить результат."""
+    """Send code to a running Isaac Sim and get the result back."""
     reader, writer = await asyncio.open_connection(host, port)
     writer.write(source.encode())
     writer.write_eof()
@@ -34,23 +44,23 @@ async def execute_in_isaac(source: str, host: str = ISAAC_HOST, port: int = ISAA
 
 
 # ============================================================================
-# Шаги настройки Isaac (исполняются по порядку внутри Isaac Sim)
+# Isaac setup steps (executed in order inside Isaac Sim)
 # ============================================================================
 
 _SRC_SANITY = '''
 import omni.usd
 stage = omni.usd.get_context().get_stage()
-print("Связь с Isaac: OK")
+print("Isaac connection: OK")
 
-# Ищем дрон по ИМЕНИ прима — путь может быть любым (/World/cf2x, /Root/cf2x, ...)
+# Find the drone by prim NAME — the path can be anything (/World/cf2x, /Root/cf2x, ...)
 DRONE_ROOT = None
 for _p in stage.Traverse():
     if _p.GetName() == "cf2x":
         DRONE_ROOT = str(_p.GetPath())
         break
 if DRONE_ROOT is None:
-    raise RuntimeError("Прим 'cf2x' не найден в сцене — добавь дрона и запусти снова")
-print("Дрон найден:", DRONE_ROOT)
+    raise RuntimeError("Prim 'cf2x' not found in the scene — add the drone and run again")
+print("Drone found:", DRONE_ROOT)
 '''
 
 _SRC_DRIVE = '''
@@ -69,12 +79,12 @@ for _p in stage.Traverse():
         drive.CreateStiffnessAttr(0.0)
         _found += 1
 if _found != 4:
-    raise RuntimeError("Найдено суставов пропеллеров: %d из 4 (под %s)" % (_found, DRONE_ROOT))
-print("Drive снят — суставы пропеллеров свободны (4/4)")
+    raise RuntimeError("Propeller joints found: %d of 4 (under %s)" % (_found, DRONE_ROOT))
+print("Drive removed — propeller joints are free (4/4)")
 '''
 
 _SRC_CONFIG = '''
-# DRONE_ROOT уже найден на шаге 1. Ищем body и пропеллеры по именам под ним.
+# DRONE_ROOT was already found in step 1. Find body and propellers by name under it.
 import omni.physx
 import omni.usd
 from pxr import PhysicsSchemaTools, Sdf, UsdGeom, Usd, UsdPhysics
@@ -94,7 +104,7 @@ for _p in stage.Traverse():
     elif _p.GetName() == "body" and BODY_PATH is None:
         BODY_PATH = _path
 if BODY_PATH is None or len(_props) != 4:
-    raise RuntimeError("Не найдены body/пропеллеры под %s (props: %s, body: %s)"
+    raise RuntimeError("body/propellers not found under %s (props: %s, body: %s)"
                        % (DRONE_ROOT, sorted(_props), BODY_PATH))
 PROP_PATHS = [_props[n] for n in _prop_names]
 print("body:", BODY_PATH)
@@ -123,7 +133,7 @@ HOVER_FORCE_TOTAL_N = DRONE_MASS_KG * GRAVITY
 HOVER_FORCE_PER_MOTOR_N = HOVER_FORCE_TOTAL_N / 4
 MAX_FORCE_PER_MOTOR_N = HOVER_FORCE_PER_MOTOR_N * THRUST_HEADROOM
 
-print(f"Масса (до Iris-репспека): {DRONE_MASS_KG:.4f} кг")
+print(f"Mass (before Iris respec): {DRONE_MASS_KG:.4f} kg")
 '''
 
 _SRC_GEOM = '''
@@ -149,7 +159,7 @@ ROTOR_CONSTANTS = [ROTOR_CONSTANT] * 4
 ROLLING_MOMENT_COEFFS = [ROLLING_MOMENT_COEFF] * 4
 
 def read_state():
-    """Позиция, ориентация, скорость и угловая скорость тела дрона."""
+    """Position, orientation, velocity and angular velocity of the drone body."""
     body_prim = stage.GetPrimAtPath(BODY_PATH)
     transform = UsdGeom.Xformable(body_prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
     pos = transform.ExtractTranslation()
@@ -162,7 +172,7 @@ def read_state():
     w = np.radians([w_deg[0], w_deg[1], w_deg[2]])
     return np.array([pos[0], pos[1], pos[2]]), R, np.array([v[0], v[1], v[2]]), w
 
-print("Геометрия и read_state() готовы")
+print("Geometry and read_state() ready")
 '''
 
 _SRC_PHYS240 = '''
@@ -177,17 +187,17 @@ for _p in stage.Traverse():
 if _scene_prim is None:
     _scene = UsdPhysics.Scene.Define(stage, Sdf.Path("/World/PhysicsScene"))
     _scene_prim = _scene.GetPrim()
-    print("PhysicsScene не было — создан", _scene_prim.GetPath())
+    print("PhysicsScene was missing — created", _scene_prim.GetPath())
 
 _ps_api = PhysxSchema.PhysxSceneAPI.Apply(_scene_prim)
 _ps_api.CreateTimeStepsPerSecondAttr().Set(240)
-print("Физика:", _ps_api.GetTimeStepsPerSecondAttr().Get(), "Hz")
+print("Physics:", _ps_api.GetTimeStepsPerSecondAttr().Get(), "Hz")
 '''
 
 _SRC_PLAY = '''
 import omni.timeline
 omni.timeline.get_timeline_interface().play()
-print("Симуляция запущена (Play)")
+print("Simulation started (Play)")
 '''
 
 _SRC_INFRA = '''
@@ -202,7 +212,7 @@ _missing = [g for g in ["ROTOR_CONSTANTS","PROP_OFFSETS_XY","ROT_DIR","ROLLING_M
                          "read_state","stage","sim_iface","physx_iface","BODY_PATH","BODY_ID"]
             if g not in globals()]
 if _missing:
-    raise RuntimeError("Не определены: " + str(_missing))
+    raise RuntimeError("Not defined: " + str(_missing))
 
 _wsl_servos = [1000] * 16
 _wsl_state  = {
@@ -220,18 +230,18 @@ try:
 except Exception:
     pass
 
-print("Инфраструктура OK, _wsl_active =", _wsl_active)
+print("Infrastructure OK, _wsl_active =", _wsl_active)
 '''
 
-# Фикс-12: lockstep UDP + конверсии FLU->FRD + accel Пегаса + броня + watchdog
+# Fix-12: lockstep UDP + FLU->FRD conversions + Pegasus accel + hardening + watchdog
 _SRC_CALLBACK = '''
 import socket, struct, json, math
 import numpy as np
 from scipy.spatial.transform import Rotation as _R
 
-# === Фикс-12: исправленный motor-map (лево-право было зеркально) ===
-SERVO_REMAP = [0, 3, 1, 2]   # rotor i <- AP servo[SERVO_REMAP[i]]; роторы: FR, RR, RL, FL
-ROT_DIR = [-1, +1, -1, +1]   # FR=CCW, RR=CW, RL=CCW, FL=CW (переопределяет геометрию)
+# === Fix-12: corrected motor-map (left-right used to be mirrored) ===
+SERVO_REMAP = [0, 3, 1, 2]   # rotor i <- AP servo[SERVO_REMAP[i]]; rotors: FR, RR, RL, FL
+ROT_DIR = [-1, +1, -1, +1]   # FR=CCW, RR=CW, RL=CCW, FL=CW (overrides geometry)
 AP_JSON_PORT = 9002
 _SERVO_MAGIC = 18458  # 0x47FA
 _WATCHDOG_MS = 1000.0
@@ -249,7 +259,7 @@ _ap_udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 _ap_udp_sock.bind(("0.0.0.0", AP_JSON_PORT))
 _ap_udp_sock.setblocking(False)
 try:
-    _ap_udp_sock.ioctl(-1744830452, False)  # SIO_UDP_CONNRESET (Windows-квирк)
+    _ap_udp_sock.ioctl(-1744830452, False)  # SIO_UDP_CONNRESET (Windows quirk)
 except Exception:
     pass
 
@@ -306,7 +316,7 @@ def _on_physics_step_wsl(dt):
             and _wsl_t_ms - _ap_last_pkt_t_ms > _WATCHDOG_MS):
         _wsl_servos[:] = [1000] * 16
         _ap_watchdog_fired = True
-        print("[WATCHDOG] SITL молчит > " + str(int(_WATCHDOG_MS)) + "мс — моторы выключены")
+        print("[WATCHDOG] SITL silent > " + str(int(_WATCHDOG_MS)) + "ms — motors off")
 
     servos = list(_wsl_servos)
 
@@ -340,7 +350,7 @@ def _on_physics_step_wsl(dt):
         f_world = a_true_world - _GRAVITY_WORLD
         f_body = Rm.T @ f_world
 
-        # === Фикс-12: конверсия FLU->FRD (мир Isaac: X=North, Y=West, Z=Up) ===
+        # === Fix-12: FLU->FRD conversion (Isaac world: X=North, Y=West, Z=Up) ===
         qn = q_sc.as_quat()
         new_state = {
             "imu": {
@@ -403,16 +413,16 @@ def _on_physics_step_wsl(dt):
 try: _ap_subscription.unsubscribe()
 except: pass
 _ap_subscription = physx_iface.subscribe_physics_step_events(_on_physics_step_wsl)
-print("Колбэк Фикс-12 активен — lockstep UDP :" + str(AP_JSON_PORT))
+print("Fix-12 callback active — lockstep UDP :" + str(AP_JSON_PORT))
 '''
 
-# Фикс-11: репспек в Iris (проверенная пара из Pegasus)
+# Fix-11: respec to Iris (a proven pair from Pegasus)
 _SRC_IRIS = '''
 import numpy as np
 from pxr import UsdPhysics, Gf
 
 IRIS_MASS_KG        = 1.5
-IRIS_INERTIA        = (0.029125, 0.029125, 0.055225)  # кг*м^2 (Ixx, Iyy, Izz)
+IRIS_INERTIA        = (0.029125, 0.029125, 0.055225)  # kg*m^2 (Ixx, Iyy, Izz)
 IRIS_ARM_X          = 0.13
 IRIS_ARM_Y          = 0.21
 IRIS_ROTOR_CONSTANT = 8.54858e-6
@@ -437,25 +447,25 @@ PROP_OFFSETS_XY = [( IRIS_ARM_X, -IRIS_ARM_Y),
                    (-IRIS_ARM_X,  IRIS_ARM_Y),
                    ( IRIS_ARM_X,  IRIS_ARM_Y)]
 
-print("Iris-репспек: масса {} кг, запас тяги {:.2f}x".format(
+print("Iris respec: mass {} kg, thrust headroom {:.2f}x".format(
     _mass_api.GetMassAttr().Get(), 4*MAX_FORCE_PER_MOTOR_N/HOVER_FORCE_TOTAL_N))
 '''
 
 _STEPS = [
-    ("1/9 Связь и дрон",          _SRC_SANITY),
-    ("2/9 Drive off",             _SRC_DRIVE),
-    ("3/9 Конфигурация",          _SRC_CONFIG),
-    ("4/9 Геометрия",             _SRC_GEOM),
-    ("5/9 Физика 240Hz",          _SRC_PHYS240),
-    ("6/9 Play",                  _SRC_PLAY),
-    ("7/9 Инфраструктура",        _SRC_INFRA),
-    ("8/9 Колбэк Фикс-12",        _SRC_CALLBACK),
-    ("9/9 Iris-репспек",          _SRC_IRIS),
+    ("1/9 Connection and drone", _SRC_SANITY),
+    ("2/9 Drive off",           _SRC_DRIVE),
+    ("3/9 Configuration",       _SRC_CONFIG),
+    ("4/9 Geometry",            _SRC_GEOM),
+    ("5/9 Physics 240Hz",       _SRC_PHYS240),
+    ("6/9 Play",                _SRC_PLAY),
+    ("7/9 Infrastructure",      _SRC_INFRA),
+    ("8/9 Fix-12 callback",     _SRC_CALLBACK),
+    ("9/9 Iris respec",         _SRC_IRIS),
 ]
 
 
 async def bridge_up():
-    """Поднять весь мост в Isaac Sim одной командой (безопасно перезапускать)."""
+    """Bring the whole bridge up in Isaac Sim with one command (safe to re-run)."""
     for name, src in _STEPS:
         r = await execute_in_isaac(src)
         out = (r.get("output") or "").strip()
@@ -464,27 +474,27 @@ async def bridge_up():
         print(f"[{name}] {status}: {out}")
         if status != "ok" or tb:
             print(tb)
-            print(">>> ОСТАНОВЛЕНО — исправь ошибку и запусти bridge_up() снова")
+            print(">>> STOPPED — fix the error and run bridge_up() again")
             return False
     print()
-    print("=== МОСТ ГОТОВ. Дальше: launch_sitl(), потом полётные задания ===")
+    print("=== BRIDGE READY. Next: launch_sitl(), then the flight missions ===")
     return True
 
 
 async def diag():
-    """Диагностика: счётчики lockstep, watchdog, ошибки, полётный лог."""
+    """Diagnostics: lockstep counters, watchdog, errors, flight log."""
     r = await execute_in_isaac('''
 print("_wsl_active =", _wsl_active)
-print("Пакетов от ArduPilot:", _ap_pkt_count, "  Ответов Isaac:", _ap_reply_count)
-print("Адрес SITL:", _ap_addr)
+print("Packets from ArduPilot:", _ap_pkt_count, "  Isaac replies:", _ap_reply_count)
+print("SITL address:", _ap_addr)
 _last = globals().get("_ap_last_pkt_t_ms", None)
 if _last is not None and _ap_pkt_count > 0:
-    print("Возраст последнего пакета: {:.2f} сек сим-времени".format((_wsl_t_ms - _last) / 1000.0))
-    print("Watchdog сработал:", globals().get("_ap_watchdog_fired", "-"))
-print("Ошибок колбэка:", globals().get("_cb_error_count", "-"), " Последняя:", globals().get("_cb_last_error", ""))
-print("Всего записей лога:", len(_wsl_log))
+    print("Age of last packet: {:.2f} sec sim-time".format((_wsl_t_ms - _last) / 1000.0))
+    print("Watchdog fired:", globals().get("_ap_watchdog_fired", "-"))
+print("Callback errors:", globals().get("_cb_error_count", "-"), " Last:", globals().get("_cb_last_error", ""))
+print("Total log entries:", len(_wsl_log))
 flight = [e for e in _wsl_log if any(p > 1000 for p in e["pwm"])]
-print("Полётных записей (PWM>1000):", len(flight))
+print("Flight entries (PWM>1000):", len(flight))
 lines = []
 for e in flight:
     lines.append(
@@ -500,27 +510,27 @@ print(chr(10).join(lines))
 
 
 async def reset_motors():
-    """После Stop->Play в Isaac: серво в ноль, мост включён, лог очищен."""
+    """After Stop->Play in Isaac: servos to zero, bridge on, log cleared."""
     r = await execute_in_isaac(
         '_wsl_servos[:] = [1000] * 16\n'
         '_wsl_active = True\n'
         '_wsl_log[:] = []\n'
-        'print("servos=1000, _wsl_active=True, лог очищен")'
+        'print("servos=1000, _wsl_active=True, log cleared")'
     )
     print(r.get("output", ""))
 
 
 # ============================================================================
-# SITL (запуск WSL-процесса из Windows, отдельное консольное окно)
+# SITL (launch a WSL process from Windows, in a separate console window)
 # ============================================================================
 
-# Команду передаём через скрипт-файл: кавычки/$-подстановки НЕ переживают
-# границу Windows->wsl.exe->bash (проверено: WIN_IP приходил пустым)
-_SITL_SCRIPT_WIN = r"C:\VSCODE\ISAAC\run_sitl.sh"
-_SITL_SCRIPT_WSL = "/mnt/c/VSCODE/ISAAC/run_sitl.sh"
+# We pass the command via a script file: quotes/$-substitutions do NOT survive
+# the Windows->wsl.exe->bash boundary (verified: WIN_IP came through empty)
+_SITL_SCRIPT_WIN = os.path.join(_ROOT, "run_sitl.sh")
+_SITL_SCRIPT_WSL = _to_wsl(_SITL_SCRIPT_WIN)
 
 _SITL_SCRIPT = """#!/bin/bash
-# Окружение как в интерактивном терминале (venv-ardupilot из install-prereqs)
+# Environment like in an interactive terminal (venv-ardupilot from install-prereqs)
 source "$HOME/.profile" 2>/dev/null || true
 if [ -f "$HOME/venv-ardupilot/bin/activate" ]; then
     source "$HOME/venv-ardupilot/bin/activate"
@@ -528,40 +538,41 @@ fi
 
 WIN_IP=$(grep nameserver /etc/resolv.conf | awk '{print $2}')
 if [ -z "$WIN_IP" ]; then
-    echo "ОШИБКА: не смог определить IP Windows из /etc/resolv.conf"
-    read -r -p "Enter чтобы закрыть..."
+    echo "ERROR: could not determine the Windows IP from /etc/resolv.conf"
+    read -r -p "Enter to close..."
     exit 1
 fi
-echo "=== SITL (sim_vehicle): физика JSON -> $WIN_IP:9002, MAVLink -> $WIN_IP:14550 ==="
+echo "=== SITL (sim_vehicle): JSON physics -> $WIN_IP:9002, MAVLink -> $WIN_IP:14550 ==="
 
 cd "$HOME/ardupilot" || exit 1
 exec python3 Tools/autotest/sim_vehicle.py -v ArduCopter \\
     --model "JSON:$WIN_IP" \\
     --add-param-file="$HOME/ardupilot/Tools/autotest/default_params/gazebo-iris.parm" \\
-    --add-param-file=/mnt/c/VSCODE/ISAAC/sitl_defaults.parm \\
+    --add-param-file=__PARM_FILE__ \\
     --no-rebuild \\
     --out "udp:$WIN_IP:14550"
 """
 
 
 def launch_sitl():
-    """Запустить ArduPilot SITL в отдельном окне. Isaac-мост должен быть уже поднят.
+    """Launch ArduPilot SITL in a separate window. The Isaac bridge must already be up.
 
-    MAVLink летит на Windows UDP:14550 (нужно одноразовое правило firewall).
+    MAVLink goes to Windows UDP:14550 (needs a one-time firewall rule).
     """
+    parm_wsl = _to_wsl(os.path.join(_ROOT, "sitl_defaults.parm"))
     with open(_SITL_SCRIPT_WIN, "w", newline="\n", encoding="utf-8") as f:
-        f.write(_SITL_SCRIPT)
+        f.write(_SITL_SCRIPT.replace("__PARM_FILE__", parm_wsl))
     p = subprocess.Popen(
         ["wsl.exe", "bash", _SITL_SCRIPT_WSL],
         creationflags=subprocess.CREATE_NEW_CONSOLE,
     )
-    print("SITL запускается в отдельном окне (PID wsl:", p.pid, ")")
-    print("В окне должно быть: 'физика JSON -> 172.x.x.x:9002' (IP НЕ пустой!)")
-    print("Через ~5 сек проверь: await diag() — счётчик пакетов должен расти.")
+    print("SITL launching in a separate window (wsl PID:", p.pid, ")")
+    print("The window should show: 'JSON physics -> 172.x.x.x:9002' (IP NOT empty!)")
+    print("After ~5 sec check: await diag() — the packet counter should be growing.")
     return p
 
 
 def stop_sitl():
-    """Убить процесс arducopter в WSL (перед рестартом после краша)."""
+    """Kill the arducopter process in WSL (before a restart after a crash)."""
     subprocess.run(["wsl.exe", "pkill", "-f", "arducopter"])
-    print("SITL остановлен (pkill arducopter)")
+    print("SITL stopped (pkill arducopter)")

@@ -1,271 +1,276 @@
-# Установка среды с нуля — полное руководство
+# Setting up the environment from scratch — full guide
 
-Этот файл описывает **всё**, что нужно установить на чистой Windows-машине, чтобы запустить проект IsaacPilot: WSL2 (Linux внутри Windows), VS Code, Python-окружение для Isaac Sim, Jupyter kernel для notebook'ов и ArduPilot SITL.
+This file describes **everything** you need to install on a clean Windows machine to run the IsaacPilot project: WSL2 (Linux inside Windows), VS Code, the Python environment for Isaac Sim, a Jupyter kernel for the notebooks, and ArduPilot SITL.
 
-Порядок в файле = порядок установки. Каждая команда объяснена: что делает, что будет, если поменять параметр.
+The order in this file = the installation order. Every command is explained: what it does, and what happens if you change a parameter.
+
+> **Paths note:** throughout this guide `C:\path\to\IsaacPilot` stands for the folder where you cloned this repository. Substitute your own path.
 
 ---
 
-## 1. WSL2 (Linux внутри Windows)
+## 1. WSL2 (Linux inside Windows)
 
-### Зачем он нужен
-ArduPilot SITL (симулятор полётного контроллера) официально собирается и работает только под Linux. Isaac Sim при этом ставится на Windows (нужна видеокарта NVIDIA с драйверами напрямую в хост-системе). WSL2 — это способ запустить настоящее ядро Linux (Ubuntu) внутри Windows без второго компьютера и без виртуалки в привычном понимании (VirtualBox/VMware) — Microsoft встроил лёгкую виртуализацию прямо в Windows.
+### Why you need it
+ArduPilot SITL (the flight-controller simulator) is officially built and runs only on Linux. Isaac Sim, on the other hand, is installed on Windows (it needs an NVIDIA GPU with drivers directly in the host system). WSL2 is a way to run a real Linux kernel (Ubuntu) inside Windows without a second computer and without a virtual machine in the usual sense (VirtualBox/VMware) — Microsoft built lightweight virtualization right into Windows.
 
-### Требования
-- Windows 10 версии 2004+ (сборка 19041+) или Windows 11
-- В BIOS/UEFI должна быть включена виртуализация (Intel VT-x / AMD-V) — на большинстве современных ПК включена по умолчанию
-- Проверить версию Windows: `Win+R` → `winver`
+### Requirements
+- Windows 10 version 2004+ (build 19041+) or Windows 11
+- Virtualization (Intel VT-x / AMD-V) must be enabled in the BIOS/UEFI — on most modern PCs it is on by default
+- Check your Windows version: `Win+R` → `winver`
 
-### Установка
-Открой **PowerShell от имени администратора** (правый клик на Пуск → «Терминал (администратор)» или «Windows PowerShell (администратор)») и выполни:
+### Installation
+Open **PowerShell as administrator** (right-click Start → "Terminal (Admin)" or "Windows PowerShell (Admin)") and run:
 
 ```powershell
 wsl --install
 ```
 
-**Что делает эта команда:**
-- Включает нужные компоненты Windows (Virtual Machine Platform, Windows Subsystem for Linux) — это фичи самой Windows, до этого выключенные
-- Скачивает и ставит **Ubuntu** (дистрибутив по умолчанию) — конкретно последнюю LTS-версию, доступную в Microsoft Store
-- Устанавливает WSL версии 2 (в отличие от WSL1, WSL2 — это настоящее linux-ядро, а не транслятор системных вызовов; SITL и сеть работают только на WSL2)
+**What this command does:**
+- Enables the required Windows components (Virtual Machine Platform, Windows Subsystem for Linux) — these are Windows features that were disabled until now
+- Downloads and installs **Ubuntu** (the default distribution) — specifically the latest LTS version available in the Microsoft Store
+- Installs WSL version 2 (unlike WSL1, WSL2 is a real Linux kernel rather than a system-call translator; SITL and networking only work on WSL2)
 
-Если хочешь конкретную версию Ubuntu (например, если проект тестировался на 22.04), укажи явно:
+If you want a specific Ubuntu version (for example, if the project was tested on 22.04), specify it explicitly:
 ```powershell
 wsl --install -d Ubuntu-22.04
 ```
-Список всех доступных дистрибутивов: `wsl --list --online`.
+List all available distributions: `wsl --list --online`.
 
-### Перезагрузка
-После `wsl --install` **обязательно перезагрузи компьютер** — команда включает системные компоненты Windows, которые применяются только после рестарта.
+### Reboot
+After `wsl --install`, **you must reboot the computer** — the command enables Windows system components that only take effect after a restart.
 
-### Первый запуск
-После перезагрузки Ubuntu запустится сама (или найди её в меню Пуск → Ubuntu). Первый запуск попросит:
-1. Придумать **имя пользователя Linux** (может отличаться от имени пользователя Windows, латиницей, без пробелов)
-2. Придумать **пароль** — вводится вслепую (символы не отображаются даже точками), это нормально для Linux-терминалов
+### First launch
+After the reboot, Ubuntu will start on its own (or find it in Start → Ubuntu). The first launch will ask you to:
+1. Choose a **Linux username** (it can differ from your Windows username, Latin letters, no spaces)
+2. Choose a **password** — it is typed blind (characters are not shown, not even as dots), which is normal for Linux terminals
 
-Этот пользователь становится администратором (sudo) внутри Ubuntu.
+This user becomes the administrator (sudo) inside Ubuntu.
 
-### Проверка, что всё встало
-В обычном PowerShell (не в Ubuntu):
+### Verify the install
+In regular PowerShell (not in Ubuntu):
 ```powershell
 wsl --list --verbose
 ```
-Должно показать что-то вроде:
+It should show something like:
 ```
   NAME      STATE           VERSION
 * Ubuntu    Running         2
 ```
-Колонка **VERSION должна быть 2**, не 1 — иначе SITL и сеть работать не будут. Если стоит 1: `wsl --set-version Ubuntu 2`.
+The **VERSION column must be 2**, not 1 — otherwise SITL and networking will not work. If it says 1: `wsl --set-version Ubuntu 2`.
 
-### Обновление системы
-Внутри Ubuntu (открой её из Пуск, или в PowerShell набери `wsl`):
+### Update the system
+Inside Ubuntu (open it from Start, or type `wsl` in PowerShell):
 ```bash
 sudo apt update && sudo apt upgrade -y
 ```
-`apt update` — обновляет список доступных пакетов (не сами пакеты); `apt upgrade -y` — ставит свежие версии уже установленных пакетов, `-y` значит «отвечать да на все вопросы автоматически». Это стандартный первый шаг на любой свежей Ubuntu.
+`apt update` refreshes the list of available packages (not the packages themselves); `apt upgrade -y` installs the latest versions of already-installed packages, and `-y` means "answer yes to all prompts automatically". This is the standard first step on any fresh Ubuntu.
 
 ---
 
 ## 2. Visual Studio Code
 
-### Скачивание
-Официальный сайт: **code.visualstudio.com** → кнопка «Download for Windows». Скачается `.exe`-установщик (System Installer, ставится на весь компьютер — рекомендуется, в отличие от User Installer).
+### Download
+Official site: **code.visualstudio.com** → the "Download for Windows" button. It downloads a `.exe` installer (the System Installer, installed machine-wide — recommended, as opposed to the User Installer).
 
-### Установка
-Запусти скачанный `.exe`. Во время установки на экране «Select Additional Tasks» рекомендую отметить галочками:
-- **Add "Open with Code" action to Windows Explorer file context menu** — правый клик на папке → «Open with Code», удобно
-- **Add to PATH** (обычно уже отмечено) — без этого команда `code` не будет работать в терминале
+### Installation
+Run the downloaded `.exe`. On the "Select Additional Tasks" screen I recommend checking:
+- **Add "Open with Code" action to Windows Explorer file context menu** — right-click a folder → "Open with Code", handy
+- **Add to PATH** (usually already checked) — without it the `code` command won't work in a terminal
 
-Остальные шаги — «Next» по умолчанию.
+The remaining steps — "Next" with defaults.
 
-### Нужные расширения
-Открой VS Code → значок квадратиков слева (Extensions, `Ctrl+Shift+X`) → в поиске введи и поставь (кнопка Install):
+### Required extensions
+Open VS Code → the squares icon on the left (Extensions, `Ctrl+Shift+X`) → search for and install (the Install button):
 
-| Расширение | ID | Зачем |
+| Extension | ID | Why |
 |---|---|---|
-| **Python** | `ms-python.python` | Подсветка синтаксиса, автодополнение, запуск .py файлов |
-| **Jupyter** | `ms-toolsai.jupyter` | Открытие и запуск `.ipynb` notebook'ов прямо в VS Code (наши `drone_control_ardupilot.ipynb` и `flight_missions.ipynb`) |
-| **WSL** | `ms-vscode-remote.remote-wsl` | Позволяет открыть VS Code «внутри» Ubuntu (папку `/home/...` или `/mnt/c/...` с точки зрения Linux) — пригодится при правке файлов ArduPilot |
+| **Python** | `ms-python.python` | Syntax highlighting, autocompletion, running .py files |
+| **Jupyter** | `ms-toolsai.jupyter` | Opening and running `.ipynb` notebooks directly in VS Code (our `drone_control_ardupilot.ipynb` and `flight_missions.ipynb`) |
+| **WSL** | `ms-vscode-remote.remote-wsl` | Lets you open VS Code "inside" Ubuntu (a `/home/...` or `/mnt/c/...` folder from Linux's point of view) — useful when editing ArduPilot files |
 
-После установки — перезапусти VS Code (предложит сам кнопкой «Reload»).
+After installing, restart VS Code (it will offer a "Reload" button).
 
 ---
 
-## 3. Python-окружение для Isaac Sim (`isaac_env`)
+## 3. Python environment for Isaac Sim (`isaac_env`)
 
-Isaac Sim 6.0 ставится не как отдельная программа с инсталлятором, а как **обычный Python-пакет через pip**, внутри изолированного виртуального окружения (venv). Так разработчик может держать несколько версий Isaac Sim / Python рядом без конфликтов.
+Isaac Sim 6.0 is not installed as a standalone program with an installer, but as a **regular Python package via pip**, inside an isolated virtual environment (venv). This lets you keep several versions of Isaac Sim / Python side by side without conflicts.
 
-### 3.1 Включить длинные пути Windows (LongPaths)
-Isaac Sim распаковывает тысячи файлов с очень длинными путями (глубоко вложенные папки экстеншенов) — стандартный лимит Windows в 260 символов на путь этого не выдерживает, установка падает с непонятными ошибками. Это нужно включить **один раз на систему, ДО установки Isaac Sim**.
+### 3.1 Enable Windows long paths (LongPaths)
+Isaac Sim unpacks thousands of files with very long paths (deeply nested extension folders) — Windows' standard 260-character path limit can't handle this, and installation fails with cryptic errors. This must be enabled **once per system, BEFORE installing Isaac Sim**.
 
-PowerShell **от администратора**:
+PowerShell **as administrator**:
 ```powershell
 Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1
 ```
-**Что делает:** меняет значение реестра Windows `LongPathsEnabled` на 1 (включено). Реестр — это системная база настроек Windows; `HKLM:\...` означает «относится ко всей машине», не к одному пользователю. Перезагрузка после этого не обязательна, но безопаснее перезайти в систему.
+**What it does:** sets the Windows registry value `LongPathsEnabled` to 1 (enabled). The registry is Windows' system settings database; `HKLM:\...` means "applies to the whole machine", not a single user. A reboot afterward is not required, but signing out and back in is safer.
 
-### 3.2 Установить Python 3.12
-Isaac Sim 6.0.1.0 рассчитан на Python 3.12 (в проекте использовалась 3.12.7). Скачать с **python.org/downloads** → раздел Windows → «Windows installer (64-bit)» для версии 3.12.x.
+### 3.2 Install Python 3.12
+Isaac Sim 6.0.1.0 targets Python 3.12 (the project used 3.12.7). Download from **python.org/downloads** → the Windows section → "Windows installer (64-bit)" for a 3.12.x version.
 
-При установке **обязательно отметь галочку «Add python.exe to PATH»** на первом экране инсталлятора — без неё команда `python` в терминале не найдётся.
+During installation, **be sure to check "Add python.exe to PATH"** on the installer's first screen — without it the `python` command won't be found in a terminal.
 
-Проверка после установки (открой новый PowerShell, старые окна не подхватят PATH):
+Check after installation (open a fresh PowerShell — existing windows won't pick up the new PATH):
 ```powershell
 python --version
 ```
-Должно вывести `Python 3.12.7` (или близкую 3.12.x).
+It should print `Python 3.12.7` (or a close 3.12.x).
 
-### 3.3 Создать виртуальное окружение
-В PowerShell перейди в папку проекта и создай venv с именем `isaac_env`:
+### 3.3 Create the virtual environment
+In PowerShell, go to the project folder and create a venv named `isaac_env`:
 ```powershell
-cd C:\VSCODE\ISAAC
+cd C:\path\to\IsaacPilot
 python -m venv isaac_env
 ```
-**Что делает:** `python -m venv <имя>` создаёт папку `isaac_env` — внутри неё копия интерпретатора Python и пустое место под библиотеки, изолированное от системного Python. Так пакеты Isaac Sim не смешаются с другими Python-проектами на компьютере.
+**What it does:** `python -m venv <name>` creates an `isaac_env` folder — inside it a copy of the Python interpreter and empty space for libraries, isolated from the system Python. This keeps Isaac Sim's packages from mixing with other Python projects on the machine.
 
-Активировать окружение (нужно делать в каждом новом терминале перед работой с проектом):
+Activate the environment (do this in every new terminal before working on the project):
 ```powershell
 .\isaac_env\Scripts\activate
 ```
-После активации в начале строки терминала появится `(isaac_env)` — это знак, что все `pip install` и `python` дальше идут внутрь этого изолированного окружения, а не в системный Python.
+After activation, `(isaac_env)` appears at the start of the terminal line — a sign that all subsequent `pip install` and `python` calls go into this isolated environment rather than the system Python.
 
-### 3.4 Установить Isaac Sim
-Внутри активированного `isaac_env`:
+### 3.4 Install Isaac Sim
+Inside the activated `isaac_env`:
 ```powershell
 pip install isaacsim[all,extscache]==6.0.1.0 --extra-index-url https://pypi.nvidia.com
 ```
-**Что делает:**
-- `isaacsim[all,extscache]` — ставит основной пакет Isaac Sim плюс **все** опциональные экстеншены (`all`) и кэш экстеншенов (`extscache`, чтобы не тянуть их по сети при первом запуске)
-- `==6.0.1.0` — фиксирует точную версию. **Не убирать** — на других версиях API `omni.physx`/`isaacsim.code_editor` может отличаться, весь код моста писался и тестировался под 6.0.1.0
-- `--extra-index-url` — Isaac Sim пакеты лежат не на обычном PyPI, а на отдельном сервере NVIDIA, эта опция говорит pip искать также и там
+**What it does:**
+- `isaacsim[all,extscache]` — installs the core Isaac Sim package plus **all** optional extensions (`all`) and the extension cache (`extscache`, so they aren't pulled over the network on first launch)
+- `==6.0.1.0` — pins the exact version. **Don't remove it** — on other versions the `omni.physx`/`isaacsim.code_editor` API may differ, and the entire bridge code was written and tested against 6.0.1.0
+- `--extra-index-url` — Isaac Sim packages live not on the regular PyPI but on a separate NVIDIA server; this option tells pip to also look there
 
-Установка тяжёлая (несколько гигабайт) и может занять 10-20+ минут в зависимости от интернета.
+The install is heavy (several gigabytes) and can take 10-20+ minutes depending on your connection.
 
-### 3.5 Первый запуск Isaac Sim
-Из активированного окружения:
+### 3.5 First launch of Isaac Sim
+From the activated environment:
 ```powershell
 isaacsim
 ```
-Первый запуск дольше обычного — Isaac Sim компилирует шейдеры и разворачивает кэш экстеншенов. Дальше открывается основное окно (Viewport, Stage, Property и т.д. — описаны в `interface_guide.md`).
+The first launch takes longer than usual — Isaac Sim compiles shaders and unpacks the extension cache. Then the main window opens (Viewport, Stage, Property, etc.).
 
-### 3.6 Включить нужный экстеншен
-Внутри Isaac Sim: меню **Window → Extensions** → в поиске найди `isaacsim.code_editor.python_server` → включи галочкой (toggle). Это открывает TCP-порт **8226**, через который notebook (`bridge_up()`) шлёт команды прямо в работающий Isaac Sim.
+### 3.6 Enable the required extension
+Inside Isaac Sim: menu **Window → Extensions** → search for `isaacsim.code_editor.python_server` → enable it (toggle). This opens TCP port **8226**, through which the notebook (`bridge_up()`) sends commands straight into the running Isaac Sim.
 
-**Важно:** экстеншен `isaacsim.code_editor.jupyter` держать **выключенным** — в версии 6.0.1.0 он конфликтует и ломает сессию. Пользуемся только `python_server`.
+**Important:** keep the `isaacsim.code_editor.jupyter` extension **disabled** — in version 6.0.1.0 it conflicts and breaks the session. We use only `python_server`.
 
 ---
 
-## 4. Jupyter kernel для notebook'ов
+## 4. Jupyter kernel for the notebooks
 
-Notebook'и проекта (`drone_control_ardupilot.ipynb`, `flight_missions.ipynb`) должны выполняться именно тем Python-интерпретатором, где стоит Isaac Sim и все библиотеки моста — то есть внутри `isaac_env`. Jupyter называет такой интерпретатор **kernel** (ядро). Чтобы VS Code увидел `isaac_env` как отдельный kernel в списке, его нужно **зарегистрировать**.
+The project's notebooks (`drone_control_ardupilot.ipynb`, `flight_missions.ipynb`) must run with exactly the Python interpreter where Isaac Sim and all the bridge libraries are installed — that is, inside `isaac_env`. Jupyter calls such an interpreter a **kernel**. For VS Code to see `isaac_env` as a separate kernel in the list, you need to **register** it.
 
-### 4.1 Поставить ipykernel в окружение
-В активированном `isaac_env` (терминал должен показывать `(isaac_env)` в начале строки):
+### 4.1 Install ipykernel into the environment
+In the activated `isaac_env` (the terminal must show `(isaac_env)` at the start of the line):
 ```powershell
 pip install ipykernel
 ```
-`ipykernel` — это пакет, который умеет превратить любой Python-интерпретатор в Jupyter-kernel (отдельный процесс, который получает код из ячейки notebook'а и возвращает результат).
+`ipykernel` is the package that can turn any Python interpreter into a Jupyter kernel (a separate process that receives code from a notebook cell and returns the result).
 
-### 4.2 Зарегистрировать kernel
+### 4.2 Register the kernel
 ```powershell
 python -m ipykernel install --user --name isaac_env --display-name "Isaac Env (isaac_env)"
 ```
-**Разбор параметров:**
-- `--user` — регистрирует kernel только для текущего пользователя Windows (не нужны права администратора), пишет конфиг в `%APPDATA%\jupyter\kernels\isaac_env\`
-- `--name isaac_env` — внутреннее техническое имя kernel (используется системой, менять не обязательно)
-- `--display-name "Isaac Env (isaac_env)"` — то, что ты **увидишь в выпадающем списке** при выборе kernel в VS Code. Можно поменять на любую понятную тебе подпись, например `"Isaac Sim 6.0.1"` — на работу не влияет, это просто ярлык для человека
+**Breakdown of the parameters:**
+- `--user` — registers the kernel only for the current Windows user (no admin rights needed), writing the config to `%APPDATA%\jupyter\kernels\isaac_env\`
+- `--name isaac_env` — the internal technical name of the kernel (used by the system; no need to change it)
+- `--display-name "Isaac Env (isaac_env)"` — what you **see in the dropdown** when picking a kernel in VS Code. You can change it to any label you like, e.g. `"Isaac Sim 6.0.1"` — it doesn't affect anything, it's just a human-facing label
 
-### 4.3 Выбрать kernel в VS Code
-1. Открой `notebooks\drone_control_ardupilot.ipynb` в VS Code
-2. В правом верхнем углу окна notebook'а — кнопка с текущим kernel (обычно после первого открытия покажет «Select Kernel»)
-3. Нажми на неё → **Jupyter Kernel...** (не «Python Environments», а именно раздел с зарегистрированными Jupyter-ядрами) → выбери **"Isaac Env (isaac_env)"** из списка
+### 4.3 Select the kernel in VS Code
+1. Open `notebooks\drone_control_ardupilot.ipynb` in VS Code
+2. In the top-right corner of the notebook window — the button with the current kernel (usually shows "Select Kernel" after the first open)
+3. Click it → **Jupyter Kernel...** (not "Python Environments", but specifically the section with registered Jupyter kernels) → pick **"Isaac Env (isaac_env)"** from the list
 
-Если `isaac_env` не появился в списке — перезапусти VS Code полностью (регистрация kernel читается при старте) или перепроверь шаг 4.2 (частая причина: команда была выполнена без активации venv, и `ipykernel` встал в системный Python вместо `isaac_env`).
+If `isaac_env` doesn't appear in the list — fully restart VS Code (kernel registration is read at startup), or re-check step 4.2 (a common cause: the command was run without activating the venv, and `ipykernel` was installed into the system Python instead of `isaac_env`).
 
-### 4.4 Проверка
-Запусти первую ячейку любого notebook'а (`Shift+Enter`). Если всё верно — код выполнится без ошибок `ModuleNotFoundError`. Если появляется ошибка про отсутствие модуля (`isaacsim`, `pymavlink` и т.п.) — значит выбран не тот kernel, либо пакет не доставлен в `isaac_env` (см. ниже).
+### 4.4 Check
+Run the first cell of any notebook (`Shift+Enter`). If everything is correct, the code runs without `ModuleNotFoundError`. If you get a missing-module error (`isaacsim`, `pymavlink`, etc.) — you either picked the wrong kernel, or the package wasn't installed into `isaac_env` (see below).
 
 ---
 
-## 5. ArduPilot SITL (внутри WSL/Ubuntu)
+## 5. ArduPilot SITL (inside WSL/Ubuntu)
 
-SITL (Software In The Loop) — это сама программа автопилота ArduCopter, скомпилированная так, чтобы физику ей поставлял не реальный дрон, а наш мост из Isaac Sim.
+SITL (Software In The Loop) is the ArduCopter autopilot program itself, compiled so that its physics is supplied not by a real drone but by our bridge from Isaac Sim.
 
-Открой Ubuntu (через Пуск, или набери `wsl` в PowerShell) и выполни по порядку:
+Open Ubuntu (via Start, or type `wsl` in PowerShell) and run in order:
 
-### 5.1 Установить зависимости сборки
+### 5.1 Install build dependencies
 ```bash
 sudo apt update
 sudo apt install -y git python3-pip python3-venv build-essential ccache
 ```
-Эти пакеты нужны, чтобы скомпилировать ArduPilot из исходников: `git` — скачать код, `build-essential` — компилятор C/C++ и линковщик, `ccache` — кэш компиляции (ускоряет повторные пересборки), `python3-pip`/`python3-venv` — для python-зависимостей самого ArduPilot (mavproxy и т.д.).
+These packages are needed to compile ArduPilot from source: `git` — to fetch the code, `build-essential` — the C/C++ compiler and linker, `ccache` — a compilation cache (speeds up repeated rebuilds), `python3-pip`/`python3-venv` — for ArduPilot's own Python dependencies (mavproxy, etc.).
 
-### 5.2 Склонировать ArduPilot
+### 5.2 Clone ArduPilot
 ```bash
 cd ~
 git clone --recurse-submodules https://github.com/ArduPilot/ardupilot.git
 cd ardupilot
 ```
-**`--recurse-submodules`** — обязательно: репозиторий ArduPilot ссылается на несколько вложенных git-репозиториев (библиотеки типа mavlink), без этого флага они останутся пустыми папками и сборка не пройдёт.
+**`--recurse-submodules`** — mandatory: the ArduPilot repository references several nested git repositories (libraries such as mavlink); without this flag they stay empty folders and the build fails.
 
-### 5.3 Установить prerequisites-скрипт ArduPilot
+### 5.3 Run ArduPilot's prerequisites script
 ```bash
 Tools/environment_install/install-prereqs-ubuntu.sh -y
 ```
-Официальный скрипт ArduPilot, ставит все специфичные для сборки автопилота зависимости (правильные версии Python-библиотек mavlink/pymavlink/pyserial и т.д.). `-y` — не спрашивать подтверждения на каждом шаге. После него скрипт попросит перезайти в терминал (`exec bash` или переоткрыть Ubuntu) — важно это сделать, он дописывает переменные окружения (`PATH` для `ccache` и т.п.) в `~/.bashrc`.
+ArduPilot's official script; it installs all the autopilot-build-specific dependencies (the correct versions of the mavlink/pymavlink/pyserial Python libraries, etc.). `-y` — don't ask for confirmation at each step. Afterward the script will ask you to reopen the terminal (`exec bash` or reopen Ubuntu) — important to do, as it appends environment variables (`PATH` for `ccache`, etc.) to `~/.bashrc`.
 
-### 5.4 Собрать SITL для квадрокоптера
+### 5.4 Build SITL for a quadcopter
 ```bash
 cd ~/ardupilot
 ./waf configure --board sitl
 ./waf copter
 ```
-`waf` — это собственная сборочная система ArduPilot (аналог `make`/`cmake`). `configure --board sitl` — говорит, что собираем не под реальную плату (Matek/Pixhawk), а под виртуальный «SITL»-борд. `./waf copter` — компилирует именно прошивку ArduCopter (квадрокоптер/мультикоптер; для самолёта было бы `./waf plane`). Результат появится в `~/ardupilot/build/sitl/bin/arducopter` — это и есть файл, который запускает `launch_sitl()` из notebook'а.
+`waf` is ArduPilot's own build system (like `make`/`cmake`). `configure --board sitl` says we are building not for a real board (Matek/Pixhawk) but for the virtual "SITL" board. `./waf copter` compiles specifically the ArduCopter firmware (quad/multicopter; for a plane it would be `./waf plane`). The result appears in `~/ardupilot/build/sitl/bin/arducopter` — that's the file `launch_sitl()` from the notebook runs.
 
-Первая сборка может занять 5-15 минут.
+The first build can take 5-15 minutes.
 
-### 5.5 (Опционально) venv для ArduPilot Python-инструментов
-В памяти проекта упоминается активация `venv-ardupilot` в скрипте запуска — если хочешь повторить в точности:
+### 5.5 (Optional) venv for ArduPilot Python tools
+The project notes mention activating a `venv-ardupilot` in the launch script — if you want to reproduce it exactly:
 ```bash
 python3 -m venv ~/venv-ardupilot
 source ~/venv-ardupilot/bin/activate
 pip install pymavlink mavproxy
 ```
-Это отдельное **Linux**-окружение (не путать с Windows `isaac_env`!) — нужно, если запускаешь SITL через `sim_vehicle.py` (обёртку, которая поднимает знакомое консольное окно ArduCopter с MavProxy для диагностики), как описано в `README.md`.
+This is a separate **Linux** environment (don't confuse it with the Windows `isaac_env`!) — needed if you launch SITL via `sim_vehicle.py` (a wrapper that brings up the familiar ArduCopter console window with MavProxy for diagnostics), as described in `README.md`.
 
 ---
 
-## 6. Проверка всей связки
+## 6. Testing the whole chain
 
-### 6.1 Правила файрвола (один раз, PowerShell от администратора)
+### 6.1 Firewall rules (once, PowerShell as administrator)
 ```powershell
 New-NetFirewallRule -DisplayName "ArduPilot JSON UDP 9002" -Direction Inbound -Protocol UDP -LocalPort 9002 -Action Allow
 New-NetFirewallRule -DisplayName "ArduPilot MAVLink UDP 14550" -Direction Inbound -Protocol UDP -LocalPort 14550 -Action Allow
 ```
-WSL2 живёт в собственной виртуальной сети — трафик от SITL (внутри Ubuntu) к Isaac Sim (на Windows-хосте) идёт через виртуальный сетевой адаптер, и Windows Defender Firewall по умолчанию блокирует входящие UDP-пакеты на нестандартные порты. Эти два правила разрешают порт **9002** (физика/JSON) и **14550** (MAVLink-команды) — без них Isaac Sim никогда не получит данные от SITL, даже если всё остальное настроено верно.
+WSL2 lives on its own virtual network — traffic from SITL (inside Ubuntu) to Isaac Sim (on the Windows host) goes through a virtual network adapter, and Windows Defender Firewall blocks inbound UDP packets on non-standard ports by default. These two rules allow port **9002** (physics/JSON) and **14550** (MAVLink commands) — without them Isaac Sim will never receive data from SITL, even if everything else is configured correctly.
 
-### 6.2 Быстрый smoke-test
-1. Открой Isaac Sim (`isaacsim` в активированном `isaac_env`), загрузи сцену с дроном `cf2x`, включи `isaacsim.code_editor.python_server`
-2. В VS Code открой `notebooks/drone_control_ardupilot.ipynb`, выбери kernel `isaac_env`, выполни ячейки по порядку:
+### 6.2 Quick smoke test
+1. Open Isaac Sim (`isaacsim` in the activated `isaac_env`), load a scene with a drone named `cf2x`, and enable `isaacsim.code_editor.python_server`
+
+   > **Using your own drone:** the bridge locates the drone by the prim name `cf2x`. To use your own drone, name its root prim `cf2x` in the scene (the path can be anything). Note: the physics is tuned for the provided Iris-class quad (1.5 kg, servo remap, Fix-12) — a different airframe needs re-tuning of mass, motor layout and servo mapping (see the sign-test tool and TROUBLESHOOTING.md).
+
+2. In VS Code open `notebooks/drone_control_ardupilot.ipynb`, select the `isaac_env` kernel, and run the cells in order:
    ```python
    from isaac_bridge import *
    await bridge_up()
    launch_sitl()
    await diag()
    ```
-3. `diag()` должен показывать растущий счётчик пакетов и `dt≈4.17мс` — если да, вся цепочка WSL↔Windows↔Isaac Sim работает
+3. `diag()` should show a growing packet counter and `dt≈4.17ms` — if so, the whole WSL↔Windows↔Isaac Sim chain is working
 
-Если что-то не так — см. таблицу проблем в основном `README.md` (раздел про частые ошибки) и хронологию фиксов в `archive/context_ardu.md`.
+If something is off — see the problems table in the main `README.md` (the common-errors section) and the detailed log in `TROUBLESHOOTING.md`.
 
 ---
 
-## Итоговая карта: что где ставится
+## Summary map: what goes where
 
-| Компонент | Где | Зачем |
+| Component | Where | Why |
 |---|---|---|
-| WSL2 + Ubuntu | Windows-фича + Linux-система | Запуск ArduPilot SITL |
-| VS Code | Windows, обычная программа | Редактор кода + запуск notebook'ов |
-| Python 3.12 | Windows | Интерпретатор для `isaac_env` |
-| `isaac_env` (venv) | `C:\VSCODE\ISAAC\isaac_env` | Изолированное окружение с Isaac Sim и зависимостями моста |
-| Isaac Sim 6.0.1.0 | Внутри `isaac_env` (pip-пакет) | Физический симулятор дрона |
-| `ipykernel` в `isaac_env` | Внутри `isaac_env` | Позволяет VS Code запускать notebook'и именно этим интерпретатором |
-| ArduPilot SITL | Внутри Ubuntu (`~/ardupilot`) | Автопилот, тот же код, что полетит на реальном Matek H743 |
+| WSL2 + Ubuntu | Windows feature + Linux system | Running ArduPilot SITL |
+| VS Code | Windows, regular program | Code editor + running the notebooks |
+| Python 3.12 | Windows | Interpreter for `isaac_env` |
+| `isaac_env` (venv) | `C:\path\to\IsaacPilot\isaac_env` | Isolated environment with Isaac Sim and the bridge dependencies |
+| Isaac Sim 6.0.1.0 | Inside `isaac_env` (pip package) | Physical drone simulator |
+| `ipykernel` in `isaac_env` | Inside `isaac_env` | Lets VS Code run the notebooks with this exact interpreter |
+| ArduPilot SITL | Inside Ubuntu (`~/ardupilot`) | Autopilot, the same code that will fly on a real Matek H743 |

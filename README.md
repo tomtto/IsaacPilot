@@ -73,7 +73,7 @@ quaternion: [qw, qx, -qy, -qz]  # scipy [x,y,z,w] → AP [w,x,y,z]
    ```
 4. Open `notebooks/flight_missions.ipynb` (kernel: `isaac_env`):
    ```python
-   # Run "Подключение" cell, then "Команды" cell
+   # Run "Connect" cell, then "Commands" cell
    arm_and_takeoff(5)   # ARM + takeoff to 5m
    goto(10, 0, 5)       # fly 10m north
    land()               # land + disarm
@@ -88,18 +88,18 @@ Stop → Play in Isaac → await reset_motors() → stop_sitl() → launch_sitl(
 ## 📁 Project Structure
 
 ```
-ISAAC/
-├── isaac_bridge.py              # Main bridge module (all Isaac-side code)
-├── sitl_defaults.parm           # ArduPilot SITL parameters
-├── interface_guide.md           # Isaac Sim UI guide (Russian)
+IsaacPilot/
+├── isaac_bridge.py                     # Main bridge module (all Isaac-side code)
+├── sitl_defaults.parm                  # ArduPilot SITL parameters
+├── README.md          / README.ru.md
+├── INSTALL.md         / INSTALL.ru.md
+├── TROUBLESHOOTING.md / TROUBLESHOOTING.ru.md
+├── .gitignore
 ├── notebooks/
-│   ├── drone_control_ardupilot.ipynb       # Bridge setup + SITL launch
-│   ├── flight_missions.ipynb               # MAVLink missions
-│   └── drone_control_ardupilot_WORKING_BACKUP.ipynb  # Backup of working version
-├── scenes/
-│   └── save_scene/              # USD scenes
-├── archive/                     # Legacy files (not used)
-└── .gitignore
+│   ├── drone_control_ardupilot.ipynb   # Bridge setup + SITL launch
+│   └── flight_missions.ipynb           # MAVLink missions
+└── assets/
+    └── cf2x/                           # Drone model (USD)
 ```
 
 ## 🔧 SITL Parameters (`sitl_defaults.parm`)
