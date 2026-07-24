@@ -4,6 +4,22 @@
 
 Порядок в файле = порядок установки. Каждая команда объяснена: что делает, что будет, если поменять параметр.
 
+> **О путях:** в этом руководстве `C:\path\to\IsaacPilot` — это папка, куда вы склонировали репозиторий. Подставляйте свой путь.
+
+---
+
+## 0. Получить проект
+
+Склонируйте (или скачайте) репозиторий в папку на Windows — например `C:\IsaacPilot`:
+
+```powershell
+git clone https://github.com/tomtto/IsaacPilot.git
+```
+
+Нет git на Windows? Поставьте его с **git-scm.com**, либо скачайте репозиторий ZIP-архивом со страницы GitHub (зелёная кнопка **Code** → **Download ZIP**) и распакуйте.
+
+Эта папка и есть `C:\path\to\IsaacPilot`, о которой идёт речь дальше.
+
 ---
 
 ## 1. WSL2 (Linux внутри Windows)
@@ -158,12 +174,13 @@ isaacsim
 
 Notebook'и проекта (`drone_control_ardupilot.ipynb`, `flight_missions.ipynb`) должны выполняться именно тем Python-интерпретатором, где стоит Isaac Sim и все библиотеки моста — то есть внутри `isaac_env`. Jupyter называет такой интерпретатор **kernel** (ядро). Чтобы VS Code увидел `isaac_env` как отдельный kernel в списке, его нужно **зарегистрировать**.
 
-### 4.1 Поставить ipykernel в окружение
+### 4.1 Поставить ipykernel и pymavlink в окружение
 В активированном `isaac_env` (терминал должен показывать `(isaac_env)` в начале строки):
 ```powershell
-pip install ipykernel
+pip install ipykernel pymavlink
 ```
-`ipykernel` — это пакет, который умеет превратить любой Python-интерпретатор в Jupyter-kernel (отдельный процесс, который получает код из ячейки notebook'а и возвращает результат).
+- `ipykernel` — превращает Python-интерпретатор в Jupyter-kernel (отдельный процесс, который получает код из ячейки notebook'а и возвращает результат).
+- `pymavlink` — библиотека протокола MAVLink. `flight_missions.ipynb` шлёт ею команды полёта (arm / takeoff / goto / land) дрону по UDP 14550. Нужна, чтобы дрон летал; самому мосту (`drone_control_ardupilot.ipynb`) она не требуется. Это отдельный пакет — `pip install isaacsim` его НЕ ставит.
 
 ### 4.2 Зарегистрировать kernel
 ```powershell
@@ -244,7 +261,11 @@ New-NetFirewallRule -DisplayName "ArduPilot MAVLink UDP 14550" -Direction Inboun
 WSL2 живёт в собственной виртуальной сети — трафик от SITL (внутри Ubuntu) к Isaac Sim (на Windows-хосте) идёт через виртуальный сетевой адаптер, и Windows Defender Firewall по умолчанию блокирует входящие UDP-пакеты на нестандартные порты. Эти два правила разрешают порт **9002** (физика/JSON) и **14550** (MAVLink-команды) — без них Isaac Sim никогда не получит данные от SITL, даже если всё остальное настроено верно.
 
 ### 6.2 Быстрый smoke-test
-1. Открой Isaac Sim (`isaacsim` в активированном `isaac_env`), загрузи сцену с дроном `cf2x`, включи `isaacsim.code_editor.python_server`
+1. Открой Isaac Sim (`isaacsim` в активированном `isaac_env`), открой/создай сцену с дроном `cf2x`, включи `isaacsim.code_editor.python_server`
+
+   > **Как добавить дрон в сцену:** модель дрона лежит в репо — `assets/cf2x/cf2x.usd` (сами сцены не входят — большие, в `.gitignore`). На любом стейдже — пустом или с любым окружением — добавь дрон: **File → Import** (или перетащи `assets/cf2x/cf2x.usd` в Stage / Viewport). Убедись, что прим называется **`cf2x`** в дереве Stage (переименуй, если импорт дал другое имя) — мост находит дрон по этому имени. Сохрани стейдж (**File → Save As…**), чтобы переиспользовать.
+
+   > **Свой дрон:** мост находит дрон по имени прима `cf2x`. Чтобы использовать свой — назови корневой прим `cf2x` (путь может быть любым). Важно: физика настроена под поставляемый квадрокоптер класса Iris (1.5 кг, servo remap, Fix-12) — другой планер потребует пере-настройки массы, раскладки моторов и servo-маппинга (см. sign-test и TROUBLESHOOTING.md).
 2. В VS Code открой `notebooks/drone_control_ardupilot.ipynb`, выбери kernel `isaac_env`, выполни ячейки по порядку:
    ```python
    from isaac_bridge import *

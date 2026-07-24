@@ -53,7 +53,7 @@ quaternion: [qw, qx, -qy, -qz]  # scipy [x,y,z,w] → AP [w,x,y,z]
 ### Требования
 
 1. **Windows 10/11** с WSL2 (Ubuntu)
-2. **Isaac Sim 6.0**, установленный через pip в venv (`isaac_env`)
+2. **Isaac Sim 6.0**, установленный через pip в venv (`isaac_env`), плюс `pip install ipykernel pymavlink` в этот venv (`pymavlink` обеспечивает команды полёта в `flight_missions.ipynb`)
 3. **ArduPilot SITL**, собранный в WSL (`~/ardupilot/build/sitl/bin/arducopter`)
 4. **Правила файрвола** (PowerShell от администратора, один раз):
    ```powershell
@@ -63,7 +63,7 @@ quaternion: [qw, qx, -qy, -qz]  # scipy [x,y,z,w] → AP [w,x,y,z]
 
 ### Запуск
 
-1. Открой Isaac Sim со сценой, содержащей дрон `cf2x`
+1. Открой Isaac Sim со сценой, содержащей дрон `cf2x` — модель дрона лежит в `assets/cf2x/cf2x.usd`; добавь её в любой стейдж (**File → Import** или перетаскиванием) и назови прим `cf2x`. Пошагово — [INSTALL.ru.md](INSTALL.ru.md) §6.2.
 2. Включи экстеншен: `isaacsim.code_editor.python_server` (порт 8226)
 3. Открой `notebooks/drone_control_ardupilot.ipynb` (kernel: `isaac_env`):
    ```python
@@ -119,4 +119,6 @@ IsaacPilot/
 
 ## 📜 Лицензия
 
-Приватный проект.
+MIT — см. [LICENSE](LICENSE). Lockstep-мост в этом репозитории свободен в использовании.
+
+Слой реактивной перцепции и роевой координации, показанный в демо-видео, — отдельное **проприетарное** ядро, в этот репозиторий **не входит** (доступно по запросу).
