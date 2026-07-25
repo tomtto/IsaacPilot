@@ -2,6 +2,12 @@
 
 Мост между **ArduPilot SITL** и **NVIDIA Isaac Sim 6.0** для симуляции квадрокоптера. Использует lockstep-транспорт по UDP для детерминированной физики на 240Hz, с собственной конверсией фреймов FLU→FRD и репспеком под дрон Iris (1.5кг).
 
+## 🎥 Демо
+
+[![IsaacPilot — мост Isaac Sim + ArduPilot SITL: запуск и полёт](https://img.youtube.com/vi/UhPoLsbyzwM/maxresdefault.jpg)](https://youtu.be/UhPoLsbyzwM)
+
+*Запуск моста и первый полёт — Isaac Sim ↔ ArduPilot SITL, прямо из Jupyter-ноутбуков.*
+
 ## ✅ Статус
 
 - **NAV_TAKEOFF 5м + стабильное зависание** — первый успешный полёт (2026-07-08)
