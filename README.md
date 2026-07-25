@@ -2,9 +2,9 @@
 
 Bridge between **ArduPilot SITL** and **NVIDIA Isaac Sim 6.0** for quadcopter simulation. Uses lockstep UDP transport for deterministic physics at 240Hz, with a custom FLU→FRD frame conversion and Iris drone respec (1.5kg).
 
-## 🎥 Demo
+## 🎥 Launch walkthrough
 
-[![IsaacPilot — Isaac Sim + ArduPilot SITL bridge: launch & flight](https://img.youtube.com/vi/UhPoLsbyzwM/maxresdefault.jpg)](https://youtu.be/UhPoLsbyzwM)
+[![IsaacPilot — Isaac Sim + ArduPilot SITL bridge: launch & flight](https://img.youtube.com/vi/CJ-g0ms-7XA/maxresdefault.jpg)](https://youtu.be/CJ-g0ms-7XA)
 
 *Launching the bridge and a first flight — Isaac Sim ↔ ArduPilot SITL, straight from Jupyter notebooks.*
 
