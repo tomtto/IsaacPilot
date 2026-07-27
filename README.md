@@ -8,7 +8,7 @@ On top of this open lockstep bridge we built an **autonomous 2-drone security sw
 
 [![Autonomous 2-drone security swarm](https://img.youtube.com/vi/xz-7rIDq75M/maxresdefault.jpg)](https://youtu.be/xz-7rIDq75M)
 
-*3 consecutive live runs, unedited (only subtitles added).* The swarm logic shown here — reactive perception, a maneuver library, a mission dispatcher and swarm coordination — is a separate proprietary core, built on top of this open bridge and written from scratch instead of ROS2. It's under active development and continually being improved. **This repository is the open bridge it runs on.**
+*2 full live runs, unedited (only subtitles added).* The swarm logic shown here — reactive perception, a maneuver library, a mission dispatcher and swarm coordination — is a separate proprietary core, built on top of this open bridge and written from scratch instead of ROS2. It's under active development and continually being improved. **This repository is the open bridge it runs on.**
 
 ## 🧠 Synthetic perception (next artifact)
 
