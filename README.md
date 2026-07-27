@@ -2,11 +2,19 @@
 
 Bridge between **ArduPilot SITL** and **NVIDIA Isaac Sim 6.0** for quadcopter simulation. Uses lockstep UDP transport for deterministic physics at 240Hz, with a custom FLU→FRD frame conversion and Iris drone respec (1.5kg).
 
-## 🎥 Launch walkthrough
+## 🐝 Built on this bridge
 
-[![IsaacPilot — Isaac Sim + ArduPilot SITL bridge: launch & flight](https://img.youtube.com/vi/CJ-g0ms-7XA/maxresdefault.jpg)](https://youtu.be/CJ-g0ms-7XA)
+On top of this open lockstep bridge we built an **autonomous 2-drone security swarm** — a patrol drone spots an intruder with onboard YOLO and hands the coordinates to a guard drone, fully autonomously:
 
-*Launching the bridge and a first flight — Isaac Sim ↔ ArduPilot SITL, straight from Jupyter notebooks.*
+[![Autonomous 2-drone security swarm](https://img.youtube.com/vi/xz-7rIDq75M/maxresdefault.jpg)](https://youtu.be/xz-7rIDq75M)
+
+*3 consecutive live runs, unedited (only subtitles added).* The swarm logic shown here — reactive perception, a maneuver library, a mission dispatcher and swarm coordination — is a separate proprietary core, built on top of this open bridge and written from scratch instead of ROS2. It's under active development and continually being improved. **This repository is the open bridge it runs on.**
+
+## 👤 About this project
+
+IsaacPilot is a hobby project, built end-to-end by one person, in the evenings. That's a framing, not a disclaimer — the whole stack here (physics bridge, SITL protocol, frame math, perception, coordination) was designed and debugged by a single developer, so what you get is small, readable and hackable rather than a heavy framework.
+
+It also means this is **not an enterprise product**: there's no support SLA, issues may sit for a while, and the API can change. Treat it as a working reference and a starting point, not a turnkey dependency.
 
 ## ✅ Status
 
@@ -54,6 +62,18 @@ velocity:   [vx, -vy, -vz]
 quaternion: [qw, qx, -qy, -qz]  # scipy [x,y,z,w] → AP [w,x,y,z]
 ```
 
+## 💡 Three things that weren't in any docs
+
+- Isaac's world frame is **Y=West**, not East — found by a deliberate sign-test.
+- ArduPilot's EKF needs **specific force** (accel − gravity), not raw body acceleration.
+- The JSON SITL protocol is **lockstep** — any TCP middleman silently kills it.
+
+## ⚙️ Engineering decisions & trade-offs
+
+- **A custom lockstep bridge, not an existing framework.** The JSON SITL protocol is lockstep — one physics reply per step. A thin UDP callback inside Isaac's physics loop keeps that guarantee with no middleman; a heavier layer would only add latency that breaks it.
+- **ArduPilot SITL instead of a hand-written controller.** After 60+ iterations of a custom stabilizer, the project switched to ArduPilot — the same code that flies on real hardware (Matek H743). Reusing a proven autopilot beats re-deriving flight control in a sim.
+- **Written from scratch instead of ROS2.** ROS2 is the right tool for complex multi-robot systems; for this focused sim-to-real bridge it would be overkill — more moving parts, less transparency. The lightweight core keeps the whole pipeline in a few readable files.
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -90,6 +110,12 @@ quaternion: [qw, qx, -qy, -qz]  # scipy [x,y,z,w] → AP [w,x,y,z]
 ```
 Stop → Play in Isaac → await reset_motors() → stop_sitl() → launch_sitl()
 ```
+
+## 🎥 Launch walkthrough
+
+[![IsaacPilot — Isaac Sim + ArduPilot SITL bridge: launch & flight](https://img.youtube.com/vi/CJ-g0ms-7XA/maxresdefault.jpg)](https://youtu.be/CJ-g0ms-7XA)
+
+*Launching the bridge and a first flight — Isaac Sim ↔ ArduPilot SITL, straight from Jupyter notebooks.*
 
 ## 📁 Project Structure
 
