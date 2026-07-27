@@ -10,6 +10,10 @@ On top of this open lockstep bridge we built an **autonomous 2-drone security sw
 
 *3 consecutive live runs, unedited (only subtitles added).* The swarm logic shown here — reactive perception, a maneuver library, a mission dispatcher and swarm coordination — is a separate proprietary core, built on top of this open bridge and written from scratch instead of ROS2. It's under active development and continually being improved. **This repository is the open bridge it runs on.**
 
+## 🧠 Synthetic perception (next artifact)
+
+The worker/intruder detection in the demo runs on a YOLO model trained on **fully synthetic data** — generated in Isaac Sim through a custom Replicator (GUI) pipeline, tuned for quality: domain-randomized scenes → KITTI → YOLO, with a full engineering log of the fixes that took the hit-rate from ~8% to ~82%. This dataset pipeline is a **separate open artifact, released as the next step after deeper testing** — so you'll be able to generate your own dataset with your own classes.
+
 ## 👤 About this project
 
 IsaacPilot is a hobby project, built end-to-end by one person, in the evenings. That's a framing, not a disclaimer — the whole stack here (physics bridge, SITL protocol, frame math, perception, coordination) was designed and debugged by a single developer, so what you get is small, readable and hackable rather than a heavy framework.
