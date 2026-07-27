@@ -2,7 +2,7 @@
 isaac_bridge.py — the whole ArduPilot <-> Isaac Sim bridge startup in a single function.
 
 Usage in a notebook (kernel isaac_env):
-    import sys; sys.path.append(r"C:\\VSCODE\\ISAACPILOT")
+    import sys; sys.path.append(r"C:\\path\\to\\IsaacPilot")
     from isaac_bridge import *
     await bridge_up()      # bring everything up in Isaac (bridge, 240Hz physics, Iris, Fix-12 callback)
     launch_sitl()          # launch ArduPilot SITL in a separate window (WSL)

@@ -133,7 +133,7 @@ python --version
 ### 3.3 Создать виртуальное окружение
 В PowerShell перейди в папку проекта и создай venv с именем `isaac_env`:
 ```powershell
-cd C:\VSCODE\ISAAC
+cd C:\path\to\IsaacPilot
 python -m venv isaac_env
 ```
 **Что делает:** `python -m venv <имя>` создаёт папку `isaac_env` — внутри неё копия интерпретатора Python и пустое место под библиотеки, изолированное от системного Python. Так пакеты Isaac Sim не смешаются с другими Python-проектами на компьютере.
@@ -286,7 +286,7 @@ WSL2 живёт в собственной виртуальной сети — т
 | WSL2 + Ubuntu | Windows-фича + Linux-система | Запуск ArduPilot SITL |
 | VS Code | Windows, обычная программа | Редактор кода + запуск notebook'ов |
 | Python 3.12 | Windows | Интерпретатор для `isaac_env` |
-| `isaac_env` (venv) | `C:\VSCODE\ISAAC\isaac_env` | Изолированное окружение с Isaac Sim и зависимостями моста |
+| `isaac_env` (venv) | `C:\path\to\IsaacPilot\isaac_env` | Изолированное окружение с Isaac Sim и зависимостями моста |
 | Isaac Sim 6.0.1.0 | Внутри `isaac_env` (pip-пакет) | Физический симулятор дрона |
 | `ipykernel` в `isaac_env` | Внутри `isaac_env` | Позволяет VS Code запускать notebook'и именно этим интерпретатором |
 | ArduPilot SITL | Внутри Ubuntu (`~/ardupilot`) | Автопилот, тот же код, что полетит на реальном Matek H743 |

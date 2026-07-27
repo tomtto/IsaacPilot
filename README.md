@@ -127,11 +127,11 @@ IsaacPilot/
 
 MIT — see [LICENSE](LICENSE). The lockstep bridge in this repository is free to use.
 
-The reactive-perception and swarm-coordination layer is a separate **proprietary** core and is **not** part of this repository (available on request).
+The reactive-perception and swarm-coordination layer is a separate **proprietary** core, built on top of this bridge and under active development. It is not part of this repository.
 
 ## 📬 Contact
 
 - Email: swarmbotlab@gmail.com
 - YouTube: [@swarmbotlab](https://www.youtube.com/@swarmbotlab)
 
-For collaboration, a pilot project, or access to the proprietary swarm layer — get in touch.
+For collaboration or a pilot project — feel free to get in touch.
