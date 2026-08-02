@@ -118,6 +118,33 @@ conn.mav.command_long_send(sysid, 1, mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVA
 **Cause:** the drone path was hardcoded (`/World/cf2x`) — in the new scene the drone's root is named differently (`/Root/cf2x`), and the drone is not at the world origin.
 **Fix:** find the prim **by name** `cf2x` via `stage.Traverse()` (not by a fixed path); likewise find the joints/propellers by a name pattern (`m*_joint`, `m*_prop`, `body`) relative to the found root. A non-zero spawn is not a problem — ArduPilot takes home from the point of first arming, not from the world origin.
 
+### 22. A scaled drone prim takes off fine, then flips — scale corrupts the reported attitude
+**Symptom:** the drone prim is scaled up in the scene (`Scale 5` on the root) to make a palm-sized quad visible on video. Takeoff completes normally ("altitude 4.70 m"), then within a couple of seconds the drone drifts sideways and tumbles. The flight log shows motors fighting each other: `pwm=[1825, 1470, 1950, 1150]` — some at the upper rail, some near idle.
+
+**Ruled out first:** mass and inertia are intact (PhysX reports exactly the authored 1.5 kg and the Iris inertia — the prim scale does not touch explicit mass properties); the motor arms used for torque are constants, independent of scene geometry; the collider grows, but that doesn't affect control.
+
+**Cause:** `read_state()` took the orientation from the **world matrix** via `ExtractRotationQuat()`. That function is only valid for a matrix **without scale/shear**. With a scale in the matrix the resulting quaternion is not proportional to the true rotation, so after normalization it is a *different* rotation:
+
+| real tilt | reported to ArduPilot (Scale 5) |
+|---|---|
+| 2° | 5.0° |
+| 10° | 24.6° |
+| 30° | 66.3° |
+
+The error is exactly zero at level attitude — which is why takeoff looks perfect. Then: the drone tips 2° → the autopilot sees 5° → it corrects twice as hard as needed → the real tilt grows → the reported tilt grows faster → divergence and a flip within seconds. A larger scale makes it worse (at Scale 6, 10° is reported as 27°).
+
+The same call appears a second time inside the physics callback, where it is worse still: that matrix rotates the body-frame torque into world axes **and** converts the angular velocity into body axes (the gyro sent to ArduPilot). So attitude, torque and gyro were all wrong at once.
+
+**Fix:** strip the scale before extracting the rotation, in both places:
+```python
+quat = transform.RemoveScaleShear().ExtractRotationQuat()
+```
+Verified numerically: at `Scale 1` the result is unchanged (no regression), at `Scale 5/6` the angles come back exact. After the fix a 5× scaled drone hovers with a tilt of 0.06° and 0.012 m/s residual velocity.
+
+**Not affected, and why:** the thrust direction (`xf.TransformDir(...).GetNormalized()` — normalized, so the direction survives), the position (a uniform scale doesn't distort the translation), and the velocities (read from `RigidBodyAPI`, not from the matrix).
+
+**Rule of thumb:** any matrix from `ComputeLocalToWorldTransform()` may carry the prim's scale. If you extract a **rotation** from it, call `RemoveScaleShear()` first. For directions, `TransformDir()` + `GetNormalized()` is safe.
+
 ---
 
 ## Historical note: the abandoned approach (Step 1 of the plan)

@@ -163,7 +163,15 @@ def read_state():
     body_prim = stage.GetPrimAtPath(BODY_PATH)
     transform = UsdGeom.Xformable(body_prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
     pos = transform.ExtractTranslation()
-    quat = transform.ExtractRotationQuat()
+    # Strip the prim scale before extracting the rotation: ExtractRotationQuat is
+    # only valid for a matrix without scale/shear. If the drone prim is scaled in
+    # the scene (e.g. Scale 5 to make a palm-sized quad visible on video), the
+    # quaternion comes out NOT proportional to the true rotation — a real 10° tilt
+    # is reported to ArduPilot as ~25°. The autopilot then over-corrects, the real
+    # tilt grows, the reported tilt grows faster, and the drone flips a couple of
+    # seconds after takeoff. The error is zero at level attitude, so takeoff itself
+    # looks perfectly fine — which is what makes this one nasty to diagnose.
+    quat = transform.RemoveScaleShear().ExtractRotationQuat()
     imag = quat.GetImaginary()
     R = Rotation.from_quat([imag[0], imag[1], imag[2], quat.GetReal()])
     rb = UsdPhysics.RigidBodyAPI(body_prim)
@@ -335,7 +343,10 @@ def _on_physics_step_wsl(dt):
             stage_id, BODY_ID,
             carb.Float3(float(up[0]*total_thrust), float(up[1]*total_thrust), float(up[2]*total_thrust)),
             carb.Float3(float(bp[0]), float(bp[1]), float(bp[2])), "Force")
-        q_usd = xf.ExtractRotationQuat()
+        # Same reason as in read_state(): this matrix rotates the body-frame torque
+        # into world axes AND the angular velocity back into body axes (the gyro we
+        # send to ArduPilot), so a scaled prim would corrupt both.
+        q_usd = xf.RemoveScaleShear().ExtractRotationQuat()
         im = q_usd.GetImaginary()
         q_sc = _R.from_quat([im[0], im[1], im[2], q_usd.GetReal()])
         Rm = q_sc.as_matrix()
